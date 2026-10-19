@@ -1,0 +1,33 @@
+{
+  "name": "agent-village",
+  "version": "0.1.0",
+  "private": true,
+  "description": "Watch and steer your Claude Code agents as little robots working in a round cartoon town.",
+  "type": "module",
+  "packageManager": "pnpm@10.28.0",
+  "engines": {
+    "node": ">=22.18.0"
+  },
+  "scripts": {
+    "first-run": "pnpm install && pnpm build && pnpm hooks:install",
+    "start": "node packages/server/src/index.ts --open",
+    "serve": "node packages/server/src/index.ts",
+    "dev": "node scripts/dev.ts",
+    "build": "pnpm --filter @agent-village/web build",
+    "test": "node --test \"packages/**/test/*.test.ts\"",
+    "typecheck": "tsc -p tsconfig.json && pnpm --filter @agent-village/web typecheck",
+    "check": "pnpm test && pnpm typecheck && pnpm build",
+    "hooks:install": "node scripts/hooks.ts install",
+    "hooks:uninstall": "node scripts/hooks.ts uninstall",
+    "hooks:status": "node scripts/hooks.ts status"
+  },
+  "devDependencies": {
+    "@types/node": "^22.10.0",
+    "typescript": "^5.7.2"
+  },
+  "pnpm": {
+    "onlyBuiltDependencies": [
+      "esbuild"
+    ]
+  }
+}

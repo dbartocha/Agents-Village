@@ -1,0 +1,463 @@
+= Agent Village
+:toc: macro
+:toclevels: 2
+:sectanchors:
+:icons: font
+:experimental:
+:server-port: 4747
+:dev-port: 5173
+:node-min: 22.18
+:pnpm-ver: 10
+
+Watch and steer your Claude Code agents as little robots working in a round cartoon town.
+
+Every Claude Code session becomes a square-headed robot. When the agent reads files, its robot reads a tablet at the library. When it edits code, the robot hammers at the construction site and a tower grows. When it runs a command, sparks fly at the forge. When it needs you, it stops, waves and an exclamation mark pops up above its head. Click it to see who it is, what it is doing and what it needs.
+
+[IMPORTANT]
+====
+*This file is the single source of truth for the project.*
+Everything a person or an AI agent needs to know lives here: what the project is, how to run it, how it is built, why it is built that way and what is planned next.
+Files for agents (`CLAUDE.md`, `AGENTS.md`, `.github/copilot-instructions.md`, `.cursor/rules/project.mdc`) only point here.
+When you change behaviour, update the matching section of this file in the same change.
+====
+
+toc::[]
+
+== At a glance
+
+[cols="1,3"]
+|===
+| What | A local web app that turns Claude Code activity into an animated 3D town.
+| Who for | People who run several AI coding agents at once and want to see, at a glance, who is working and who is waiting for them.
+| How it gets data | Claude Code *hooks* (`type: "http"`) post every event to a small server on your computer.
+| Where it runs | Only on your computer: server on `http://localhost:{server-port}`, town in your browser.
+| Languages | Interface in English and Polish (switch in the top-left corner).
+| Status | Stage 1 (watch) and an experimental part of stage 2 (approve from the town). See <<status>>.
+|===
+
+== How the town works
+
+=== Stations
+
+The town is a round island. A fountain sits on the plaza in the middle, a ring road goes around it, and buildings stand on the outer ring.
+
+[cols="1,1,3"]
+|===
+| Station | Claude Code tools | What the robot does
+
+| Library (purple dome) | `Read`, `Grep`, `Glob`, `LS` | Reads a glowing tablet. When the next step is an edit, it carries a crate to the construction site.
+| Construction site (crane) | `Edit`, `MultiEdit`, `Write`, `NotebookEdit` | Hammers. Every edit adds part of a floor to a round tower. A finished tower gets a roof, confetti and is then rebuilt.
+| Forge | `Bash`, `PowerShell`, `BashOutput`, `KillShell` | Strikes the anvil, sparks fly.
+| Radar tower | `WebSearch`, `WebFetch` | Looks up; the dish spins and sends out signal rings.
+| Plaza (fountain) | everything else (`TodoWrite`, MCP tools, `Task`…) and "thinking" right after a prompt | Works on a tablet next to the fountain.
+| Charging station | — | A robot whose turn has finished stands on a pad and charges (sleepy eyes, green antenna light).
+| Factory | — | New sessions roll out of its door. Ended sessions walk back in.
+|===
+
+=== Signals
+
+* Yellow bubble *!* and a waving robot: the agent needs a permission (for example to run a command).
+* Blue bubble *?*: the agent asked you a question (`AskUserQuestion`) or needs input.
+* The antenna light blinks in the same colour, so you can spot it even when zoomed out.
+* The chips under the counters (top right) list every robot that is waiting. Click one to jump to it.
+
+=== Controls
+
+* Click a robot (or its name tag) to open its panel: task, current step, recent steps and, when it is waiting, the request.
+* Drag to move the camera, mouse wheel or pinch to zoom, kbd:[Q] / kbd:[E] or the buttons to rotate by 45°.
+* "Follow" in the panel keeps the camera on the robot. kbd:[Esc] closes the panel.
+* The page follows your system's light or dark theme. Dark theme turns the town into night with lit windows and lamps.
+
+== Quick start for everyone (no programming needed)
+
+This takes about 10 minutes the first time. You need a Windows, macOS or Linux computer with Claude Code already working.
+
+. *Install Node.js.* Go to https://nodejs.org, download the version marked *LTS* and install it with the default options.
+. *Install pnpm.* Open a terminal (Windows: press kbd:[Win], type `PowerShell`, press kbd:[Enter]) and type:
++
+[source,shell]
+----
+npm install -g pnpm
+----
+. *Get the project.* Either download it from GitHub as a ZIP and unpack it, or clone it with Git. Remember the folder.
+. *Open a terminal in that folder.* Windows: open the folder in Explorer, click the address bar, type `powershell` and press kbd:[Enter].
+. *Set everything up with one command* (only the first time):
++
+[source,shell]
+----
+pnpm first-run
+----
++
+This downloads the parts the town needs, builds it and connects Claude Code to it (it adds hooks to your Claude Code settings; a backup of your settings is saved first).
++
+NOTE: Type `first-run`, not `setup`: `pnpm setup` is a built-in pnpm command that does something else.
+. *Start the town:*
++
+[source,shell]
+----
+pnpm start
+----
++
+Your browser opens `http://localhost:{server-port}`. Leave the terminal window open; closing it stops the town.
+. *Use Claude Code as usual*, in any project. Sessions that you start (or restart) from now on appear as robots.
+
+[TIP]
+====
+No agents running yet? Click *Demo* in the top-right corner to see six simulated robots at work.
+====
+
+To stop the town, press kbd:[Ctrl+C] in its terminal. To disconnect Claude Code from the town completely, run `pnpm hooks:uninstall` in the project folder.
+
+=== Approving requests from the town (optional, experimental)
+
+By default the town only watches: when a robot waves, you answer in the Claude Code terminal as usual.
+If you want *Allow* / *Deny* buttons in the town that really answer Claude Code, run once:
+
+[source,shell]
+----
+pnpm hooks:install --approvals
+----
+
+and restart the town with `pnpm start`. When Claude Code asks for a permission, it now waits up to 60 seconds for your click in the town. If you do not click, Claude Code shows its usual question in the terminal.
+
+== Quick start for developers
+
+.Requirements
+* Node.js *{node-min} or newer* (the server runs TypeScript directly through Node's built-in type stripping).
+* pnpm {pnpm-ver} (`npm install -g pnpm` or `corepack enable`).
+* Claude Code with HTTP hook support, for live data. The demo works without it.
+
+[source,shell]
+----
+pnpm install          # dependencies for the web town and type checking
+pnpm dev              # server on :4747 (auto-restart) + Vite on :5173 with hot reload
+pnpm hooks:install    # connect Claude Code to the local server (user settings)
+----
+
+Open `http://localhost:{dev-port}` during development. Vite proxies `/events` and `/api` to the server.
+
+.Scripts (run in the repository root)
+[cols="1,3"]
+|===
+| Command | What it does
+
+| `pnpm first-run` | `pnpm install`, `pnpm build`, `pnpm hooks:install` in one go. (Not named `setup`, because `pnpm setup` is built into pnpm.)
+| `pnpm start` | Starts the server and opens the built town in the browser.
+| `pnpm serve` | Starts the server without opening a browser.
+| `pnpm dev` | Server with `--watch` plus the Vite dev server.
+| `pnpm build` | Builds the town into `packages/web/dist` (served by the server).
+| `pnpm test` | All tests (`node --test`, no extra test framework).
+| `pnpm typecheck` | TypeScript checks for every package.
+| `pnpm check` | `test` + `typecheck` + `build`. Run before every commit.
+| `pnpm hooks:install [--approvals] [--port N] [--project DIR]` | Adds the hooks to Claude Code settings.
+| `pnpm hooks:uninstall [--project DIR]` | Removes only the hooks this project added.
+| `pnpm hooks:status [--project DIR]` | Shows which hooks are installed.
+|===
+
+The server can also run without `pnpm install`: `node packages/server/src/index.ts`.
+
+== Instructions for AI agents
+
+You are working on Agent Village. Read this whole file before changing anything. Then follow these rules.
+
+. *This file is the source of truth.* If your change alters behaviour, commands, the event model, files or plans, update the matching section here in the same change, and update <<status>>. Do not create other documentation files; add sections here instead.
+. *Keep the server and the shared package dependency-free.* They use only Node's standard library and run as `.ts` files through Node type stripping. That means: erasable TypeScript only (no `enum`, no `namespace`, no constructor parameter properties), `import type` for types, and explicit `.ts` extensions in relative imports. The shared TypeScript config enforces erasable syntax in the web package too, so keep the same style there.
+. *Never weaken the security model* (<<security>>): loopback binding by default, Host header check, token on hooks and API, no CORS. Ask the human before changing any of it.
+. *Hooks must stay fast and harmless.* Observation hooks must answer immediately with an empty body. Only `PermissionRequest` may wait, and only when approvals are on. Any error path must let Claude Code continue normally.
+. *The UI is bilingual.* Every user-facing string goes into `packages/web/src/ui/i18n.ts` with both `pl` and `en`. Polish strings that depend on the robot's grammatical gender use `{ m, f }`.
+. *The shared contract is `packages/shared/src/index.ts`.* Change server and web together when you change it, and bump `PROTOCOL_VERSION` for breaking changes.
+. *Before you finish*, run `pnpm check` (or at least `pnpm test` and `pnpm typecheck`) and fix what fails. For visual changes, run `pnpm dev`, use *Demo* mode and look at the result.
+. *Keep changes small and explain them* in the commit message: what changed and why.
+. *The human author is the only author.* Do not add `Co-Authored-By:` trailers, "Generated with …" lines, session links or any other AI attribution to commits, pull requests or files. Commits go to the private repository https://github.com/dbartocha/Agents-Village. See <<author>>.
+
+.Where things live
+[source]
+----
+agent-village/
+├── readme.adoc                 ← this file, the source of truth
+├── CLAUDE.md, AGENTS.md        ← pointers to readme.adoc for coding agents
+├── .github/copilot-instructions.md, .cursor/rules/project.mdc   ← same pointer for Copilot and Cursor
+├── package.json                ← root scripts (pnpm workspace)
+├── scripts/
+│   ├── hooks.ts                ← CLI: install / uninstall / status of Claude Code hooks
+│   └── dev.ts                  ← runs server + Vite together
+├── prototype/
+│   └── agent-village-prototype.html   ← the original single-file prototype (reference only)
+└── packages/
+    ├── shared/src/index.ts     ← event model, tool → station map, helpers (no deps)
+    ├── server/                 ← hook receiver, state, SSE stream, approvals (no deps)
+    │   ├── src/index.ts        ← CLI entry point
+    │   ├── src/config.ts       ← port, token, flags, ~/.agent-village/config.json
+    │   ├── src/state.ts        ← sessions and activities (hook → activity mapping)
+    │   ├── src/permissions.ts  ← holds PermissionRequest hooks until you click
+    │   ├── src/http.ts         ← routes, security checks, static files
+    │   ├── src/hooks-config.ts ← add/remove our hooks in a settings object
+    │   └── test/               ← node:test suites
+    └── web/                    ← the town (Vite + TypeScript + three.js)
+        ├── index.html          ← page markup (HUD, panel, dialog); token placeholder in a meta tag
+        ├── vite.config.ts      ← dev proxy to the server, dev-time token injection
+        └── src/
+            ├── main.ts         ← wiring: source choice, selection, input, frame loop
+            ├── lib/util.ts     ← small helpers (random, angles, escaping)
+            ├── world/          ← 3D only, no agent logic
+            │   ├── kit.ts      ← renderer, materials, lights, day/night theme, light-unit conversion
+            │   ├── layout.ts   ← station positions, slots, walking paths
+            │   ├── town.ts     ← island, buildings, crane, tower, radar, forge, pads, trees, clouds
+            │   ├── robot.ts    ← robot mesh and its procedural animations (RobotMesh)
+            │   ├── particles.ts← sparks, smoke, water
+            │   └── camera.ts   ← orthographic camera, pan/zoom/rotate, picking
+            ├── agents/         ← turning activities into robot behaviour
+            │   ├── source.ts   ← Source interface shared by live and demo
+            │   ├── live.ts     ← SSE client, health probe, POST decisions
+            │   ├── demo.ts     ← six simulated agents (the prototype scenes)
+            │   ├── controller.ts ← Village: one Robot per session, feed, busy stations
+            │   └── robot.ts    ← Robot: beat queue, pacing, walking, attention
+            └── ui/             ← plain DOM
+                ├── i18n.ts     ← every string in PL and EN
+                ├── format.ts   ← status, "now" line, log and feed texts
+                ├── hud.ts      ← counters, queue chips, live/demo switch, feed, camera buttons
+                ├── tags.ts     ← name tags, ! and ? bubbles, speech pops
+                ├── panel.ts    ← robot panel (request, approve/deny, answer, log)
+                ├── dialog.ts   ← "New robot" dialog
+                ├── app.ts      ← what the UI modules need from main.ts
+                └── styles.css  ← all styles (ported from the prototype)
+----
+
+== Architecture
+
+[source]
+----
+ Claude Code session(s)                     your computer only
+ ┌──────────────────────┐   HTTP POST /hooks   ┌──────────────────────────────┐
+ │ hooks (type: "http") │ ───────────────────► │ Agent Village server :4747   │
+ │ SessionStart,        │ ◄─── empty body ──── │  VillageState (sessions,     │
+ │ PreToolUse, Stop, …  │      or decision     │  activities)                 │
+ └──────────────────────┘   (PermissionRequest)│  PermissionBroker (approvals)│
+                                               └──────┬───────────────▲───────┘
+                                     GET /events (SSE)│               │POST /api/permissions/:id
+                                                      ▼               │
+                                               ┌──────────────────────┴───────┐
+                                               │ Browser: the town            │
+                                               │  Live/Demo source → Village  │
+                                               │  → Robots → three.js + HUD   │
+                                               └──────────────────────────────┘
+----
+
+* *Claude Code* sends a JSON payload for each hook event to `POST /hooks`. The installer writes these hooks for you.
+* *The server* turns each payload into *activities* (see <<event-model>>), keeps a picture of every session in memory, and pushes changes to browsers over *Server-Sent Events*.
+* *The town* builds robots from the snapshot it gets on connect, then animates each new activity. In *demo mode* a local script produces the same activities, so live and demo share one code path.
+
+[[event-model]]
+== Event model
+
+The contract is defined in `packages/shared/src/index.ts`.
+
+=== Session
+
+One Claude Code session (`session_id`) = one robot. The server keeps for each session: `id`, robot `name` (from a fixed list: Atlas, Nova, Bolt, Iris, Pixel, Luna, …), `cwd` and `project` (last folder name), `model`, `status`, last `prompt`, `currentTool`, `pending` permission, `attentionText`, number of running `subagents`, `toolCount`, `lastMessage`.
+
+`status` is one of: `idle` (turn finished, waiting for your next prompt), `thinking` (between steps), `working` (a tool is running), `waiting` (needs a permission), `asking` (asked you a question), `ended`.
+
+=== Hook → activity mapping
+
+[cols="2,2,3"]
+|===
+| Claude Code hook | Session status | Activity and robot behaviour
+
+| `SessionStart` | idle | `session_start`: robot rolls out of the factory to a charging pad.
+| `UserPromptSubmit` | thinking | `prompt`: robot cheers, leaves the charger, thinks at the plaza. The prompt becomes its task.
+| `PreToolUse` | working | `tool` with `station` and a one-line `target`: robot walks to the station and works.
+| `PreToolUse` for `AskUserQuestion` | asking | `tool` + `attention: question`: robot waves with a blue *?*.
+| `PermissionRequest` | waiting | `permission`: robot waves with a yellow *!*. With approvals on, the HTTP call is held until you click (or until the timeout).
+| `Notification` with `notification_type: permission_prompt` | waiting | `attention: permission` (watch-only variant of the above).
+| `Notification` with `idle_prompt` | idle | `attention: idle` (logged only).
+| `Notification` with `agent_needs_input` / `elicitation_*` | asking | `attention: question`.
+| `PostToolUse` | thinking | `tool_done`. An open permission is closed as answered in the terminal.
+| `PostToolUseFailure` | thinking | `tool_failed` with a short error.
+| `Stop` / `StopFailure` | idle | `stop` with the last assistant message: robot goes to charge once its queued steps are shown.
+| `SubagentStart` / `SubagentStop` | — | `subagent_start` / `subagent_stop`: counter on the robot.
+| `SessionEnd` | ended | `session_end`: robot walks back into the factory and disappears after 15 s.
+|===
+
+Hooks fired inside a subagent carry `agent_id` and are attributed to the parent session's robot.
+
+=== Messages on the stream
+
+`GET /events` sends `event: snapshot` once (all sessions + the last 200 activities), then `event: activity` (one activity plus the updated session) and `event: removed` (session gone). A comment line `: ping` keeps the connection alive every 20 s.
+
+== Server
+
+[source,shell]
+----
+node packages/server/src/index.ts [--port 4747] [--host 127.0.0.1] [--approvals | --no-approvals]
+                                  [--approval-timeout 60] [--open] [--quiet]
+----
+
+.Settings, from lowest to highest priority
+. `~/.agent-village/config.json` (created on first run; holds the `token`, and `port`, `approvals`, `approvalTimeoutSec` saved by `pnpm hooks:install`).
+. Environment variables: `AGENT_VILLAGE_PORT`, `AGENT_VILLAGE_HOST`, `AGENT_VILLAGE_APPROVALS` (`1`/`0`), `AGENT_VILLAGE_APPROVAL_TIMEOUT`, `AGENT_VILLAGE_ALLOWED_HOSTS` (comma-separated extra Host names), `AGENT_VILLAGE_HOME` (moves the config folder; used by tests).
+. Command-line flags.
+
+.HTTP endpoints
+[cols="1,2,1,3"]
+|===
+| Method | Path | Auth | Purpose
+
+| POST | `/hooks` | token header | Receives every Claude Code hook. Answers `200` with an empty body, or a decision for `PermissionRequest`.
+| GET | `/events` | `?token=` | Server-Sent Events stream (snapshot, activities, removals).
+| GET | `/api/state` | `?token=` | Current snapshot as JSON.
+| POST | `/api/permissions/:id` | token header | Body `{"decision":"allow"\|"deny"}`. Answers a held `PermissionRequest`. `409` when it is no longer waiting.
+| GET | `/api/health` | none | `{ ok, name, version, approvals, sessions }`. Used by the town to detect the server.
+| GET | everything else | none | The built town from `packages/web/dist`, with the token injected into `index.html`.
+|===
+
+The token header is `X-Agent-Village-Token`.
+
+[[security]]
+=== Security model
+
+The server can approve commands on your computer, so it is locked down:
+
+* It listens on `127.0.0.1` only, unless you pass `--host`.
+* Every request must have a `Host` header of `localhost`, `127.0.0.1` or `[::1]` (or one listed in `AGENT_VILLAGE_ALLOWED_HOSTS`). This blocks DNS-rebinding attacks from websites.
+* Hooks and the API require the random token from `~/.agent-village/config.json`. The page gets it injected by the server; other websites cannot read it because the server sends no CORS headers.
+* `POST /api/permissions` also rejects foreign `Origin` headers.
+* The page is served with a strict Content Security Policy (`default-src 'self'`). Fonts are bundled; the town loads nothing from the internet.
+* Prompts, paths and commands stay in memory only and are never written to disk.
+
+WARNING: Do not expose the port to your network or the internet. To use a tablet on your home network, see <<roadmap>>; a safe way (for example Tailscale) is planned.
+
+[[hooks]]
+== Claude Code hooks
+
+`pnpm hooks:install` adds one entry like this for each observed event to `~/.claude/settings.json` (or `<project>/.claude/settings.local.json` with `--project`):
+
+[source,json]
+----
+{
+  "hooks": {
+    "PreToolUse": [
+      { "hooks": [ { "type": "http", "url": "http://127.0.0.1:4747/hooks", "timeout": 5,
+                     "headers": { "X-Agent-Village-Token": "<token>" } } ] }
+    ]
+  }
+}
+----
+
+* Observed events: `SessionStart`, `UserPromptSubmit`, `PreToolUse`, `PostToolUse`, `PostToolUseFailure`, `Notification`, `Stop`, `SubagentStart`, `SubagentStop`, `SessionEnd`.
+* With `--approvals` it also adds `PermissionRequest` with a timeout 15 s longer than the server's own wait, and saves `approvals: true` in the config.
+* Your other hooks are left untouched. Ours are recognised by the `/hooks` URL plus the token header, so uninstall removes only them.
+* A copy of the settings file is saved in `~/.agent-village/backups/` before every change.
+* Open Claude Code sessions load hooks at start. Restart them (or review hooks with `/hooks`) after installing.
+
+.How failures behave (from the Claude Code hooks documentation)
+* If the server is not running, the HTTP call fails and Claude Code continues normally (a non-blocking hook error).
+* An empty `200` body means "no decision": Claude Code continues with its usual behaviour.
+* For `PermissionRequest`, the server answers `{"hookSpecificOutput":{"hookEventName":"PermissionRequest","decision":{"behavior":"allow"}}}` or the same with `"behavior":"deny"` and a `message`.
+
+NOTE: Field names were checked against the Claude Code hooks reference (https://code.claude.com/docs/en/hooks) on 2026-10-19. The exact deny fields and some per-event input fields (`notification_type`, `last_assistant_message`, `error`) are read defensively; verify them when Claude Code changes.
+
+== The town (web)
+
+* Vite + TypeScript + three.js 0.170, no UI framework. The town is drawn with toon materials and rounded shapes; robots are built from primitives in code (no model files). Fonts (Fredoka, Rubik, JetBrains Mono) come from `@fontsource` packages and are bundled, so nothing loads from the internet.
+* `world/` builds the scene once and knows nothing about agents. `agents/controller.ts` keeps one `Robot` per session; `agents/robot.ts` decides what each robot shows. `ui/` renders the HUD and panel with plain DOM.
+* *Pacing.* Real agents run tools in milliseconds, so each robot has a queue of *beats*. Consecutive steps at the same station merge into one visit. A beat lasts 1.7 s (1.2 s for thinking), down to 0.5 s when the queue grows; walking speeds up too. While a tool is still running (a long build, a long search), the robot keeps working at that station. After a tool, a robot that is still "thinking" walks to the fountain after a few seconds.
+* *Attention first.* A permission request or a question clears the robot's queue: it walks straight to the station of the tool in question and waves (! or ?). The bubble, counters and queue chips appear at once, even while it walks.
+* *Real data in the panel.* The panel's "Now" line, the request box and the log always show the real current state, not the animation.
+* *Live and demo.* On start the page reads the token from `<meta name="agent-village-token">` (the server fills it in) and calls `/api/health`. If both work, it connects to `/events`; otherwise it starts the demo and says so in the feed. The *Live / Demo* switch changes source at any time; `?demo` in the URL forces the demo. Both sources speak the same `ServerMessage` format (`agents/source.ts`).
+* *What only the demo can do.* Answering questions, messages, *Stop* and *New robot* are simulated in the demo. Live, the panel shows the request and tells you to answer in the terminal, except permissions with approvals on (see <<hooks>>). Steering live agents is stage 3.
+* *Language.* English and Polish, chosen from the browser language and remembered in `localStorage`. Demo texts are stored in both languages, so switching also changes what is already on screen.
+* *Prototype.* `prototype/agent-village-prototype.html` is the original single-file version that defined the look. Keep it as a reference; do not develop it further.
+
+[[decisions]]
+== Decisions
+
+[cols="1,3"]
+|===
+| Decision | Why
+
+| Local web app (server + browser), no Next.js | No server rendering or routing needed; one long-running process must keep state in memory and hold permission requests for minutes, which Next.js dev reloads would break. A small server and a static Vite build are also easier to ship as `npx` or a desktop app later.
+| Server with zero runtime dependencies | It starts instantly, needs no install, and the code that can approve commands stays small enough to read in one sitting.
+| Claude Code `http` hooks instead of hook scripts | Works the same on Windows, macOS and Linux, no shell scripts to maintain, and failure is non-blocking by design.
+| Server-Sent Events instead of WebSockets | Data flows one way (server → town); the few commands go over plain `POST`. SSE reconnects by itself and needs no library.
+| three.js without a framework | The prototype is plain three.js; porting it 1:1 keeps the approved look. React Three Fiber would add weight without benefit here.
+| Colour management off, light units scaled | Keeps the exact colours of the approved r128 prototype on current three.js: ambient, hemisphere and sun light ×π; point lights (lamps, forge) use decay 1 and ×2.8. Checked by rendering the prototype with r128 and the new town with r170 side by side, by day and by night: average colours differ by less than 3%.
+| Robots, English names, bilingual UI | Requested for a more professional presentation; Polish stays available.
+|===
+
+[[status]]
+== Status and next steps
+
+This section is the hand-over point between work sessions. Keep it current.
+
+=== Done
+
+* Shared event model and tool → station map, with tests.
+* Server: hook endpoint, session state, SSE stream, health and state API, static hosting with token injection, Host/token/Origin checks, approvals broker with timeout fallback. Every streamed activity carries the session state it leads to. Tests: state, HTTP, hooks config (27 in total).
+* Hook installer CLI (install, uninstall, status, backups, project mode, approvals flag), with tests.
+* Web town: the prototype ported into modules (`world/`, `agents/`, `ui/`), live source (SSE + approvals) and demo source on one code path, beat pacing, attention handling, panel with Allow/Deny, PL/EN, day/night, phone layout.
+* Lighting on three.js 0.170 matched to the r128 prototype (see <<decisions>>).
+* Repository basics: workspace, scripts, TypeScript config, agent pointer files, this readme.
+
+.How the current version was checked (2026-10-19)
+The first version was written in a sandbox without access to the npm registry, so `pnpm install` and `vite build` have *not* run yet. Instead:
+
+* `node --test`: 27 tests pass. `tsc` passes for server, shared and web (web checked against the official three.js r170 type definitions).
+* The web town was bundled with esbuild (fonts stubbed) and served by the real server. Headless Chromium (software WebGL) ran it end to end: live mode with hooks posted like Claude Code does (two sessions, tools, a `PermissionRequest` approved in the panel, the hook received `allow`, stop, session end), demo mode (deny with fallback step, new robot, questions), PL/EN switch, dark theme and a 390 px phone screen. No errors in the console.
+
+=== In progress
+
+* Nothing half-done. The next session starts with the first real run on Windows.
+
+=== Next
+
+. On the author's Windows PC: `pnpm first-run`, then `pnpm check`. Fix anything that only shows up with real packages (Vite build, `@fontsource` fonts, `@types/three`).
+. Use it with a real Claude Code session; compare real hook payloads with the mapping in <<event-model>> (`notification_type`, `last_assistant_message`, `PermissionRequest` deny fields).
+. Show subagents as small helper robots next to their parent.
+. Optional: sound when a robot starts waving.
+
+[[roadmap]]
+=== Roadmap
+
+Stage 1 — Watch:: Robots appear per session and animate real tool use. _(done, waiting for the first real run)_
+Stage 2 — Approve:: Allow/Deny from the town through `PermissionRequest`. _(done, experimental, behind `--approvals`)_
+Stage 3 — Launch and talk:: Start agents from the town ("New robot"), send messages and stop them, using the Claude Agent SDK on the server.
+Stage 4 — Polish:: A district per project, subagent robots, sounds for "!", history in SQLite, a desktop app (Tauri) with tray icon and always-on-top window, an `npx agent-village` package, safe tablet access on the home network.
+
+== Troubleshooting
+
+No robots appear::
+. Is the town running (`pnpm start`) and does `http://localhost:4747/api/health` answer?
+. Are the hooks installed? Run `pnpm hooks:status`.
+. Restart the Claude Code session; it loads hooks only at start.
+. Port changed? Run `pnpm hooks:install --port <port>` again.
+
+"Port 4747 is already in use":: The town is probably already running in another terminal. Open `http://localhost:4747`, or start on another port with `node packages/server/src/index.ts --port 4848` and reinstall the hooks with `--port 4848`.
+
+Claude Code shows hook errors when the town is off:: Expected: each hook call fails fast and Claude Code continues. Start the town, or run `pnpm hooks:uninstall` while you do not use it.
+
+The page says the town is not built:: Run `pnpm install` and `pnpm build`, then refresh.
+
+The town is black or empty:: Your browser needs WebGL. Try Chrome, Edge, Firefox or Safari with hardware acceleration on.
+
+The town shows the demo although the server is running:: Open the town from the server itself (`http://localhost:4747`), not from a saved file or another port: only the server puts the token into the page. During development use `http://localhost:5173` after the server has run once (it creates `~/.agent-village/config.json`, which Vite reads). Then click *Live*.
+
+`pnpm setup` did something strange:: That is pnpm's own command for installing pnpm. The project's command is `pnpm first-run`.
+
+== Glossary
+
+Session:: One running Claude Code conversation. One session = one robot.
+Hook:: A Claude Code setting that calls a command or URL when something happens (a tool runs, a prompt is sent…).
+Activity:: One event in the town's own format, made by the server from a hook.
+Station:: A place in the town where robots do one kind of work.
+Beat:: One step a robot shows on screen; several quick tool calls can merge into one beat.
+Approvals:: The optional mode in which the town answers Claude Code's permission questions.
+
+== License
+
+Not decided yet. All rights reserved by the author until a license is added.
+
+[[author]]
+== Author
+
+Dawid (GitHub: https://github.com/dbartocha[dbartocha]) is the author and owner of Agent Village and manages the project: its scope, priorities, releases and license are his decisions. He is the only author of the code and of the commits in https://github.com/dbartocha/Agents-Village (private). AI coding agents work on his instructions and are never listed as authors or co-authors.

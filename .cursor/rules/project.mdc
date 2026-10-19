@@ -1,0 +1,8 @@
+---
+description: Agent Village project rules. The single source of truth is readme.adoc.
+alwaysApply: true
+---
+
+Read @readme.adoc before doing anything. It is the single source of truth for this project.
+Follow its section "Instructions for AI agents" and update it (including "Status and next steps") with every change.
+Do not add project knowledge to this file.

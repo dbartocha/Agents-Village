@@ -1,0 +1,129 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<meta name="color-scheme" content="light dark">
+<!-- The village server replaces the placeholder below with its token when it serves this page. -->
+<meta name="agent-village-token" content="__AGENT_VILLAGE_TOKEN__">
+<title>Agent Village</title>
+<link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 64 64'%3E%3Crect x='30' y='4' width='4' height='12' rx='2' fill='%239aa3b5'/%3E%3Ccircle cx='32' cy='6' r='5' fill='%23ffc93d'/%3E%3Crect x='6' y='16' width='52' height='42' rx='12' fill='%23eef1f6' stroke='%233a5ce0' stroke-width='3'/%3E%3Crect x='12' y='22' width='40' height='28' rx='8' fill='%231f2643'/%3E%3Crect x='21' y='30' width='6' height='11' rx='3' fill='%237ff3ff'/%3E%3Crect x='37' y='30' width='6' height='11' rx='3' fill='%237ff3ff'/%3E%3C/svg%3E">
+<script type="module" src="/src/main.ts"></script>
+</head>
+<body>
+<canvas id="world" data-i18n-attr="aria-label:canvasLabel" aria-label="Agent town"></canvas>
+<div id="tags"></div>
+<div id="nogl" hidden><div class="card"><strong data-i18n="noglTitle">The town can't be displayed.</strong><p data-i18n="noglText"></p></div></div>
+
+<div class="hud">
+  <header class="top" id="top">
+    <div class="brand card">
+      <div class="brand-row">
+        <h1 data-i18n="brandTitle">Agent Village</h1>
+        <div class="lang" role="group" data-i18n-attr="aria-label:langLabel"><button type="button" data-lang="pl" aria-pressed="false">PL</button><button type="button" data-lang="en" aria-pressed="false">EN</button></div>
+      </div>
+      <p data-i18n="brandSub"></p>
+    </div>
+    <div class="right">
+      <div class="controls">
+        <div class="stats card" role="status" aria-live="polite">
+          <span class="stat"><i class="dot work"></i><b id="sWork">0</b><span class="lbl" data-i18n="statWork"></span></span>
+          <button class="stat waitbtn" id="sWaitBtn" type="button"><i class="dot wait"></i><b id="sWait">0</b><span class="lbl" data-i18n="statWait"></span></button>
+          <span class="stat"><i class="dot done"></i><b id="sDone">0</b><span class="lbl" data-i18n="statDone"></span></span>
+        </div>
+        <div class="mode card" role="group" id="mode">
+          <button type="button" data-mode="live" aria-pressed="false"><i class="dot conn" id="connDot"></i><span data-i18n="toLive"></span></button>
+          <button type="button" data-mode="demo" aria-pressed="false" data-i18n="toDemo"></button>
+        </div>
+        <button class="btn primary" id="newBtn" type="button"><span aria-hidden="true">+</span><span class="lbl" data-i18n="newBtn">New robot</span></button>
+      </div>
+      <div class="queue" id="queue"></div>
+    </div>
+  </header>
+
+  <div class="middle">
+    <div class="empty card" id="empty" hidden>
+      <h2 data-i18n="emptyTitle"></h2>
+      <p data-i18n="emptyText"></p>
+      <p class="hint" data-i18n="emptyHooks"></p>
+      <button class="btn primary" type="button" id="emptyDemo" data-i18n="emptyDemo"></button>
+    </div>
+  </div>
+
+  <footer class="bottom">
+    <div class="bl">
+      <details class="legend card" id="legend" open>
+        <summary data-i18n="legend">Legend</summary>
+        <ul>
+          <li><span class="sw" style="background:#ffc23d"></span><span><b data-i18n="lgSite"></b> <code>Edit</code> <code>Write</code><br><span class="d" data-i18n="lgSiteD"></span></span></li>
+          <li><span class="sw" style="background:#7c5cd6"></span><span><b data-i18n="lgLib"></b> <code>Read</code> <code>Grep</code><br><span class="d" data-i18n="lgLibD"></span></span></li>
+          <li><span class="sw" style="background:#e07a50"></span><span><b data-i18n="lgForge"></b> <code>Bash</code><br><span class="d" data-i18n="lgForgeD"></span></span></li>
+          <li><span class="sw" style="background:#ff6b6b"></span><span><b data-i18n="lgTower"></b> <code>WebSearch</code><br><span class="d" data-i18n="lgTowerD"></span></span></li>
+          <li><span class="sw" style="background:#6fc7e8"></span><span><b data-i18n="lgPlaza"></b><br><span class="d" data-i18n="lgPlazaD"></span></span></li>
+          <li><span class="sw" style="background:#3cc0b0"></span><span><b data-i18n="lgCharge"></b><br><span class="d" data-i18n="lgChargeD"></span></span></li>
+          <li><span class="sw g" style="background:var(--alert);border-color:var(--alert-dark);color:var(--alert-ink)">!</span><span><b data-i18n="lgWait"></b> <span class="d">·</span> <span class="sw g inl" style="background:var(--ask);border-color:var(--ask-dark);color:var(--ask-ink)">?</span> <b data-i18n="lgAsk"></b></span></li>
+        </ul>
+        <p class="note" id="legendNote"></p>
+      </details>
+      <ol class="feed card" id="feed" data-i18n-attr="aria-label:feedLabel"></ol>
+    </div>
+    <div class="cam card" data-i18n-attr="aria-label:camLabel">
+      <button type="button" id="rotL" data-i18n-attr="aria-label:rotL;title:rotL"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M4 9a8 8 0 1 1-1 5"/><path d="M4 3v6h6"/></svg></button>
+      <button type="button" id="rotR" data-i18n-attr="aria-label:rotR;title:rotR"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M20 9a8 8 0 1 0 1 5"/><path d="M20 3v6h-6"/></svg></button>
+      <button type="button" id="zoomIn" data-i18n-attr="aria-label:zoomIn;title:zoomIn"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round"><path d="M12 5v14M5 12h14"/></svg></button>
+      <button type="button" id="zoomOut" data-i18n-attr="aria-label:zoomOut;title:zoomOut"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round"><path d="M5 12h14"/></svg></button>
+      <button type="button" id="recenter" data-i18n-attr="aria-label:recenter;title:recenter"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round"><circle cx="12" cy="12" r="3.5"/><path d="M12 2v4M12 18v4M2 12h4M18 12h4"/></svg></button>
+    </div>
+  </footer>
+</div>
+
+<aside class="panel card" id="panel" hidden aria-labelledby="pName">
+  <div class="p-head">
+    <div class="p-avatar" id="pAvatar"><span class="an"></span><span class="hd"><span class="sc"><i></i><i></i></span></span></div>
+    <div class="p-title"><h2 id="pName">Robot</h2><p class="p-meta" id="pMeta"></p><span class="pill" id="pStatus"></span></div>
+    <button class="icon-btn" id="pClose" type="button" data-i18n-attr="aria-label:closePanel">×</button>
+  </div>
+  <div class="p-body" id="pBody">
+    <section><h3 data-i18n="hTask"></h3><p id="pTask"></p></section>
+    <section><h3 data-i18n="hNow"></h3><div class="now" id="pNow"></div><div class="progress" id="pProgWrap"><i></i></div></section>
+    <section id="pAction" hidden></section>
+    <section id="pLastWrap" hidden><h3 data-i18n="hLast"></h3><p class="last" id="pLast"></p></section>
+    <section><h3 data-i18n="hLog"></h3><ol class="log" id="pLog"></ol></section>
+  </div>
+  <div class="p-foot">
+    <form class="inline-form" id="msgForm">
+      <label for="msgInput" class="sr" data-i18n="msgLabel"></label>
+      <input type="text" id="msgInput" data-i18n-attr="placeholder:msgPh" autocomplete="off">
+      <button class="btn" type="submit" data-i18n="send"></button>
+    </form>
+    <div class="p-actions">
+      <button class="btn small" id="pFollow" type="button"></button>
+      <button class="btn small danger" id="pStop" type="button" data-i18n="stop"></button>
+    </div>
+  </div>
+</aside>
+
+<div class="backdrop" id="newDlg" hidden>
+  <form class="dialog card" id="newForm">
+    <h2 data-i18n="dlgTitle"></h2>
+    <div id="dlgDemo">
+      <p data-i18n="dlgSub"></p>
+      <label for="newName" data-i18n="dlgName"></label>
+      <input type="text" id="newName" autocomplete="off" maxlength="16">
+      <label for="newTask" data-i18n="dlgTask"></label>
+      <textarea id="newTask" rows="3"></textarea>
+      <div class="suggest" id="suggest"></div>
+    </div>
+    <div id="dlgLive" hidden>
+      <p data-i18n="dlgLiveSub"></p>
+      <code class="cmd">claude</code>
+      <p data-i18n="dlgLiveNote"></p>
+    </div>
+    <div class="row">
+      <button class="btn" type="button" id="newCancel" data-i18n="cancel"></button>
+      <button class="btn primary" type="submit" id="newSubmit" data-i18n="launch"></button>
+    </div>
+  </form>
+</div>
+</body>
+</html>

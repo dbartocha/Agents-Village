@@ -1,0 +1,10 @@
+{
+  "name": "@agent-village/shared",
+  "version": "0.1.0",
+  "private": true,
+  "description": "Event model shared by the Agent Village server and web town.",
+  "type": "module",
+  "exports": {
+    ".": "./src/index.ts"
+  }
+}
