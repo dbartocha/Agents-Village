@@ -407,11 +407,14 @@ The first version was written in a sandbox without access to the npm registry, s
 
 === In progress
 
-* Nothing half-done. The next session starts with the first real run on Windows.
+* Nothing half-done.
+
+.First real run on Windows (2026-10-19)
+On the author's Windows 11 PC (Node 24, pnpm 10): `pnpm install`, `pnpm build` (Vite, `@fontsource` fonts), `pnpm typecheck`, `pnpm test` (27 pass) and `pnpm hooks:install` all worked without changes. `pnpm start` serves the town and receives real hooks from a running Claude Code session.
+Known glitch: the server's console log prints the `·` separator as `Â·` in Windows PowerShell (console code page).
 
 === Next
 
-. On the author's Windows PC: `pnpm first-run`, then `pnpm check`. Fix anything that only shows up with real packages (Vite build, `@fontsource` fonts, `@types/three`).
 . Use it with a real Claude Code session; compare real hook payloads with the mapping in <<event-model>> (`notification_type`, `last_assistant_message`, `PermissionRequest` deny fields).
 . Show subagents as small helper robots next to their parent.
 . Optional: sound when a robot starts waving.
