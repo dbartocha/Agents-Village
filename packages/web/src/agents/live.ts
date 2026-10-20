@@ -58,6 +58,8 @@ export class LiveSource implements Source {
       handle(e as MessageEvent<string>);
     });
     es.addEventListener('activity', e => handle(e as MessageEvent<string>));
+    es.addEventListener('session', e => handle(e as MessageEvent<string>));
+    es.addEventListener('bank', e => handle(e as MessageEvent<string>));
     es.addEventListener('removed', e => handle(e as MessageEvent<string>));
     es.onerror = () => {
       if (this.stopped) return;

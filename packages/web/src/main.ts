@@ -22,7 +22,7 @@ import type { App } from './ui/app';
 import { BankView } from './ui/bank';
 import { NewRobotDialog } from './ui/dialog';
 import { Hud } from './ui/hud';
-import { applyStatic, fmtCompact, onLang } from './ui/i18n';
+import { applyStatic, fmtAic, fmtCompact, onLang } from './ui/i18n';
 import { Panel } from './ui/panel';
 import { Tags } from './ui/tags';
 import { CameraRig, attachControls } from './world/camera';
@@ -87,7 +87,7 @@ const village = new Village(town, {
   },
   feed(items) { hud.setFeed(items); },
   pop(robot, key, kind) { tags.pop(robot, key, kind, rig); },
-  paid(robot, tokens) { tags.popText(robot, '+' + fmtCompact(tokens), 'coin', rig); },
+  paid(robot, payout) { tags.popText(robot, '+' + (payout.nanoAic !== undefined ? fmtAic(payout.nanoAic) + ' AIC' : fmtCompact(payout.tokens ?? 0)), 'coin', rig); },
   bank(b) { bankView.set(b); },
 });
 const dialog = new NewRobotDialog(app, () => village.system('sysFull'));
@@ -200,6 +200,7 @@ function relabel(): void {
   hud.relabel();
   dialog.relabel();
   bankView.relabel();
+  tags.sync(village.list(), selected?.id ?? null);
   panel.render(true);
 }
 onLang(relabel);

@@ -3,7 +3,7 @@ import { AGENT_LABELS, QUESTION_TOOLS, canonicalTool, modelLabel } from '../../.
 import type { Activity, StationId } from '../../../shared/src/index.ts';
 import type { LogEntry, Robot } from '../agents/robot';
 import { esc } from '../lib/util';
-import { L, fmtCompact, hasKey, t } from './i18n';
+import { L, fmtAic, fmtCompact, hasKey, t } from './i18n';
 
 export const stName = (id: StationId | undefined): string => t('st_' + (id ?? 'plaza'));
 
@@ -82,7 +82,7 @@ export function logLine(e: LogEntry, r: Robot, prev?: LogEntry): { cls: string; 
       return { cls: 'k-sys', html: esc(t(key)) };
     }
     case 'stop': return { cls: 'k-done', html: '<span>✓ ' + esc(t('lDone')) + '</span>' };
-    case 'earned': return { cls: 'k-earn', html: '<span>🪙 ' + esc(t('a_earned', { n: fmtCompact(a.tokens ?? 0) }, f)) + '</span>' };
+    case 'earned': return { cls: 'k-earn', html: '<span>🪙 ' + esc(feedText(a, f)) + '</span>' };
     case 'subagent_start': return { cls: 'k-sys', html: esc(t('a_sub_start', { agent: a.agentType ?? '' })) };
     case 'subagent_stop': return { cls: 'k-sys', html: esc(t('a_sub_stop')) };
     case 'session_end': return { cls: 'k-sys', html: esc(t('a_end', undefined, f)) };
@@ -136,7 +136,9 @@ export function feedText(a: Activity, f: boolean, short = true): string {
     case 'permission_resolved': return t('a_res_' + (a.resolution ?? 'cancelled'));
     case 'stop': return t('a_stop', undefined, f);
     case 'session_end': return t('a_end', undefined, f);
-    case 'earned': return t('a_earned', { n: fmtCompact(a.tokens ?? 0) }, f);
+    case 'earned': return a.nanoAic !== undefined
+      ? t('a_earnedAic', { n: fmtAic(a.nanoAic) }, f)
+      : t('a_earned', { n: fmtCompact(a.tokens ?? 0) }, f);
     default: return '';
   }
 }

@@ -169,7 +169,7 @@ button{cursor:pointer}
 .lang button:not([aria-pressed="true"]):hover{color:var(--ink)}
 
 /* ---------- labels above robots ---------- */
-.tag{position:absolute;left:0;top:0;display:flex;flex-direction:column;align-items:center;gap:6px;will-change:transform}
+.tag{position:absolute;left:0;top:0;display:flex;flex-direction:column;align-items:center;gap:6px}
 .tag .name{
   pointer-events:auto;display:inline-flex;align-items:center;gap:5px;
   font-family:var(--font-display);font-size:12.5px;font-weight:600;line-height:1;padding:4px 9px 4px 6px;border-radius:999px;
@@ -178,6 +178,12 @@ button{cursor:pointer}
 .tag .name i{width:8px;height:8px;border-radius:50%}
 .tag.sel .name{border-color:var(--accent);box-shadow:0 0 0 2px var(--accent)}
 .tag.off{display:none}
+.tag .earnings{display:flex;align-items:center;gap:5px;font-size:11px;line-height:1.2;color:var(--gold-ink);background:linear-gradient(#fff4cb,#ffe298);border:1px solid var(--gold-dark);border-radius:999px;padding:4px 8px;white-space:nowrap;box-shadow:0 2px 0 rgba(127,87,0,.22)}
+.tag .earnings strong{font-weight:700;font-variant-numeric:tabular-nums}
+.tag .earnings .unit{font-size:10px;font-weight:500}
+.coin-token{display:inline-block;flex:none;width:13px;height:13px;border-radius:50%;background:var(--gold);border:1px solid var(--gold-dark);box-shadow:inset 0 0 0 2px #ffe992,1px 1px 0 var(--gold-dark)}
+.tag .earnings.received{animation:reward-glow 1.2s ease-out}
+@keyframes reward-glow{0%,30%{box-shadow:0 0 0 4px rgba(255,201,61,.5),0 0 18px rgba(255,201,61,.6)}100%{box-shadow:0 2px 0 rgba(127,87,0,.22)}}
 .bubble{
   pointer-events:auto;width:36px;height:36px;border-radius:50%;display:grid;place-items:center;
   font-family:var(--font-display);font-weight:700;font-size:23px;line-height:1;
@@ -343,13 +349,18 @@ input[type=text]:focus,textarea:focus{outline:none;border-color:var(--accent);bo
 /* ---------- bank: label, chip, card, earned ---------- */
 :root{ --gold:#ffc93d; --gold-dark:#c28d0c; --gold-ink:#3b2a00; --claude:#d97757; --copilot:#8b5cf6; }
 .banktag{
-  position:absolute;left:0;top:0;pointer-events:auto;will-change:transform;
-  display:grid;justify-items:center;gap:1px;padding:5px 11px 6px;border-radius:12px;
+  position:absolute;left:0;top:0;pointer-events:auto;
+  display:grid;gap:5px;padding:7px 11px 8px;border-radius:12px;
   background:var(--glass);border:2px solid var(--gold-dark);color:var(--ink);
   font-family:var(--font-display);font-size:12px;font-weight:600;line-height:1.15;white-space:nowrap;box-shadow:0 3px 0 var(--gold-dark);
 }
 .banktag b{font-size:13px;color:var(--gold-dark)}
-.banktag .c::before,.banktag .p::before{content:"";display:inline-block;width:7px;height:7px;border-radius:50%;margin-right:5px;vertical-align:1px}
+.banktag .bank-heading{display:flex;align-items:baseline;justify-content:space-between;gap:24px;padding-bottom:3px;border-bottom:1px solid var(--line)}
+.banktag small{font-family:var(--font-body);font-size:10px;color:var(--muted)}
+.banktag .c,.banktag .p{display:flex;align-items:center;gap:5px}
+.banktag strong{margin-left:auto;padding-left:12px;font-weight:600;font-variant-numeric:tabular-nums}
+.daily-payout{display:grid;gap:10px}
+.banktag .c::before,.banktag .p::before{content:"";display:inline-block;flex:none;width:7px;height:7px;border-radius:50%}
 .banktag .c::before{background:var(--claude)}
 .banktag .p::before{background:var(--copilot)}
 .banktag.off{display:none}
@@ -363,7 +374,9 @@ input[type=text]:focus,textarea:focus{outline:none;border-color:var(--accent);bo
 .tag .name .mdl{color:var(--muted);font-weight:500}
 .tag .name .mark{font-size:10px;font-weight:700;letter-spacing:.02em;padding:2px 6px;border-radius:999px;margin-left:2px}
 .tag .name .mark.copilot{background:var(--copilot);color:#fff}
-.pop.coin{background:var(--gold);color:var(--gold-ink);border-color:var(--gold-dark);font-size:16px}
+.pop.coin{display:flex;align-items:center;gap:7px;background:linear-gradient(#fff4cb,#ffd465);color:var(--gold-ink);border-color:var(--gold-dark);font-size:16px;padding:7px 12px;box-shadow:0 3px 0 rgba(127,87,0,.3);animation-duration:2.4s}
+.pop.coin .coin-token{width:18px;height:18px}
+@media (prefers-reduced-motion: reduce){.tag .earnings.received{animation:none}.pop.coin{animation:none;transform:translate(-50%,-100%)}}
 .vault{display:grid;gap:8px}
 .vault h3{display:flex;align-items:center;gap:7px}
 .vdot{width:10px;height:10px;border-radius:50%;display:inline-block}
@@ -399,6 +412,11 @@ input[type=text]:focus,textarea:focus{outline:none;border-color:var(--accent);bo
   .earn .split{grid-template-columns:repeat(2,1fr)}
 }
 .bankcard .p-meta{white-space:normal}
+.session-time dl{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:8px;margin:0 0 8px}
+.session-time dl div{background:var(--field);border:1px solid var(--line);border-radius:10px;padding:8px}
+.session-time dt{font-size:12px;color:var(--muted)}
+.session-time dd{margin:4px 0 0;font-family:var(--font-display);font-size:15px;font-weight:600;font-variant-numeric:tabular-nums;overflow-wrap:anywhere}
+.session-time .hint{font-size:12px;color:var(--muted);margin-top:6px}
 @media (max-width: 560px){
   .bankchip{display:none}
 }

@@ -99,11 +99,51 @@ export interface Activity {
   agentType?: string;
   /** 'earned' only: tokens used since the previous 'earned'. */
   tokens?: number;
+  /** Copilot payout, in billionths of an AI Credit (never token counts or dollars). */
+  nanoAic?: number;
   /** Demo only: answer buttons for a question. */
   options?: Text[];
 }
 
 export type SessionStatus = 'idle' | 'thinking' | 'working' | 'waiting' | 'asking' | 'ended';
+
+export type TimeBucket = 'workMs' | 'waitMs' | 'idleMs';
+
+/** Observed wall time, not CPU time. `since` anchors the currently running bucket. */
+export interface SessionTiming {
+  startedAt: number;
+  since: number;
+  workMs: number;
+  waitMs: number;
+  idleMs: number;
+  active?: TimeBucket;
+  endedAt?: number;
+}
+
+export function newSessionTiming(now: number): SessionTiming {
+  return { startedAt: now, since: now, workMs: 0, waitMs: 0, idleMs: 0 };
+}
+
+/** Settle the previous interval before starting a new status (undefined pauses observation). */
+export function advanceTiming(t: SessionTiming, status: SessionStatus | undefined, now: number): void {
+  const at = Math.max(t.since, now);
+  if (t.active) t[t.active] += at - t.since;
+  t.since = at;
+  t.active = status === 'thinking' || status === 'working' ? 'workMs'
+    : status === 'waiting' || status === 'asking' ? 'waitMs'
+    : status === 'idle' ? 'idleMs' : undefined;
+  if (status === 'ended') t.endedAt ??= at;
+  else if (status !== undefined) t.endedAt = undefined;
+}
+
+/** Read without mutating: the browser can tick between server updates. */
+export function sessionDurations(t: SessionTiming, now: number) {
+  const totals = { workMs: t.workMs, waitMs: t.waitMs, idleMs: t.idleMs };
+  if (t.active) totals[t.active] += Math.max(0, now - t.since);
+  const lifeMs = Math.max(0, (t.endedAt ?? Math.max(t.since, now)) - t.startedAt);
+  const unobservedMs = Math.max(0, lifeMs - totals.workMs - totals.waitMs - totals.idleMs);
+  return { lifeMs, ...totals, unobservedMs };
+}
 
 export interface PendingPermission {
   id: string;
@@ -150,6 +190,10 @@ export interface SessionInfo {
   status: SessionStatus;
   startedAt: number;
   updatedAt: number;
+  /** Additive protocol-2 field; absent on older servers. */
+  timing?: SessionTiming;
+  earnings?: SessionEarnings;
+  earningsError?: string;
   prompt?: Text;
   currentTool?: { tool: string; target: Text; station: StationId; toolUseId?: string; startedAt: number };
   pending?: PendingPermission;
@@ -181,8 +225,18 @@ export interface CopilotBank {
   error?: string;
 }
 
-/** What the town's bank shows: how much of each provider's limit is left. */
-export interface Bank { claude?: ClaudeBank; copilot?: CopilotBank }
+export type PayoutUnit = 'tokens' | 'nanoAic';
+export interface SessionEarnings { unit: PayoutUnit; total: number }
+export interface DailyPayouts { day: string; tokens: number; nanoAic: number }
+
+/** Local calendar date, deliberately not UTC: the bank's daily payout boundary. */
+export function localDay(at: number): string {
+  const d = new Date(at);
+  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
+}
+
+/** Provider limits and daily payouts are separate, with separate units. */
+export interface Bank { claude?: ClaudeBank; copilot?: CopilotBank; daily?: DailyPayouts }
 
 export interface Snapshot {
   protocol: number;
@@ -199,7 +253,7 @@ export type ServerMessage =
   | { type: 'activity'; activity: Activity; session: SessionInfo }
   | { type: 'removed'; sessionId: string }
   | { type: 'bank'; bank: Bank }
-  /** The session changed without an activity (tokens, model, cost). */
+  /** The session changed without an activity (tokens, model, cost, timing checkpoint). */
   | { type: 'session'; session: SessionInfo };
 
 /** Fields Claude Code sends to every hook. Anything else is optional and read defensively. */

@@ -1,13 +1,13 @@
 /**
  * The bank in the UI: the floating label above the building, the chip next to the counters and the bank card.
- * The bank "pays" robots for their tokens and shows how much of each provider's limit is LEFT.
+ * Daily token/AIC payouts are separate from optional provider allowance vaults.
  */
 import type { Bank } from '../../../shared/src/index.ts';
-import { $, esc } from '../lib/util';
+import { $, esc, placeScreenLabel } from '../lib/util';
 import type { CameraRig } from '../world/camera';
 import type { VaultLevels } from '../world/town';
 import type { App } from './app';
-import { fmtUsd, fmtWhen, t } from './i18n';
+import { fmtAic, fmtCompact, fmtNumber, fmtUsd, fmtWhen, t } from './i18n';
 
 const left = (usedPct: number) => Math.max(0, Math.min(100, Math.round(100 - usedPct)));
 
@@ -22,20 +22,6 @@ export function vaultLevels(bank: Bank): VaultLevels {
     },
     copilot: { level: p && p.updatedAt > 0 && p.allowance ? Math.max(0, 1 - p.used / p.allowance) : undefined },
   };
-}
-
-/** "5h 62% · 7d 41%" or "—". */
-function claudeShort(bank: Bank): string {
-  const c = bank.claude;
-  const parts = [c?.fiveHour && `5h ${left(c.fiveHour.usedPct)}%`, c?.sevenDay && `7d ${left(c.sevenDay.usedPct)}%`].filter(Boolean);
-  return parts.length ? parts.join(' · ') : '—';
-}
-
-/** "212/300" or "—". */
-function copilotShort(bank: Bank): string {
-  const p = bank.copilot;
-  if (!p || p.updatedAt === 0) return '—';
-  return p.allowance ? `${Math.round(p.used)}/${p.allowance}` : String(Math.round(p.used));
 }
 
 export class BankView {
@@ -56,7 +42,9 @@ export class BankView {
     this.tag = document.createElement('button');
     this.tag.type = 'button';
     this.tag.className = 'banktag';
-    this.tag.innerHTML = '<b></b><span class="c"></span><span class="p"></span>';
+    this.tag.innerHTML = '<span class="bank-heading"><b></b><small></small></span>'
+      + '<span class="c"><span>Claude</span><strong></strong></span>'
+      + '<span class="p"><span>Copilot</span><strong></strong></span>';
     this.tag.addEventListener('click', onOpen);
     $('#tags').appendChild(this.tag);
     this.set({});
@@ -71,15 +59,14 @@ export class BankView {
   }
 
   relabel(): void {
-    const c = claudeShort(this.bank), p = copilotShort(this.bank);
     this.tag.querySelector('b')!.textContent = t('bankName');
-    this.tag.querySelector('.c')!.textContent = `Claude ${c}`;
-    this.tag.querySelector('.p')!.textContent = `Copilot ${p}`;
+    this.tag.querySelector('small')!.textContent = t('bankToday');
+    const daily = this.bank.daily;
+    this.tag.querySelector('.c strong')!.textContent = daily ? `${fmtCompact(daily.tokens)} ${t('earnTokens')}` : '—';
+    this.tag.querySelector('.p strong')!.textContent = daily ? `${fmtAic(daily.nanoAic)} AIC` : '—';
+    const paid = daily ? t('bankDailyShort', { aic: fmtAic(daily.nanoAic), tokens: fmtCompact(daily.tokens) }) : '—';
     this.tag.title = this.chip.title = t('bankOpen');
-    const five = this.bank.claude?.fiveHour ?? this.bank.claude?.sevenDay;
-    const cp = this.bank.copilot;
-    const cpLeft = cp && cp.updatedAt > 0 && cp.allowance ? `${left((cp.used / cp.allowance) * 100)}%` : copilotShort(this.bank);
-    this.chip.innerHTML = `<span class="coin" aria-hidden="true"></span><span>Claude <b>${esc(five ? left(five.usedPct) + '%' : '—')}</b></span><span class="sep">·</span><span>Copilot <b>${esc(cpLeft)}</b></span>`;
+    this.chip.innerHTML = `<span class="coin" aria-hidden="true"></span><span>${esc(paid)}</span>`;
     if (this.isOpen) this.render(true);
   }
 
@@ -88,7 +75,7 @@ export class BankView {
     const p = rig.toScreen(x, y, z);
     const vis = p.visible && p.x > -80 && p.x < rig.width + 80 && p.y > -60 && p.y < rig.height + 60;
     this.tag.classList.toggle('off', !vis);
-    if (vis) this.tag.style.transform = `translate3d(${p.x.toFixed(1)}px,${p.y.toFixed(1)}px,0) translate(-50%,-100%)`;
+    if (vis) placeScreenLabel(this.tag, p.x, p.y);
   }
 
   show(): void {
@@ -157,6 +144,12 @@ export class BankView {
     const costHtml = costs.length
       ? `<section><h3>${esc(t('bankCost'))}</h3><p class="vbig">≈ ${esc(fmtUsd(cost))}</p><p class="vnote">${esc(t('bankCostNote'))}</p></section>`
       : '';
-    $('#bankBody').innerHTML = claude + copilot + costHtml + `<p class="hint">${esc(t(demo ? 'bankDemo' : 'bankSource'))}</p>`;
+    const daily = this.bank.daily;
+    const payouts = `<section class="daily-payout"><h3>${esc(t('bankDaily'))}</h3>`
+      + (daily ? `<p class="vnote">${esc(daily.day)}</p><div class="vrow"><span>Copilot</span><b class="vbig">${esc(fmtAic(daily.nanoAic))} AIC</b></div>`
+        + `<div class="vrow"><span>Claude</span><b class="vbig" title="${esc(fmtNumber(daily.tokens))}">${esc(fmtCompact(daily.tokens))} ${esc(t('earnTokens'))}</b></div>`
+        : `<p class="vnote">${esc(t('bankDailyMissing'))}</p>`)
+      + `<p class="hint">${esc(t('bankDailyNote'))}</p></section>`;
+    $('#bankBody').innerHTML = payouts + claude + copilot + costHtml + `<p class="hint">${esc(t(demo ? 'bankDemo' : 'bankSource'))}</p>`;
   }
 }

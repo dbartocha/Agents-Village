@@ -71,18 +71,33 @@ const pl: Record<string, Entry> = {
   demoDone: 'Zrobione: {task}',
   hEarned: 'Zarobione', earnTokens: 'tokenów', earnIn: 'wejście', earnOut: 'wyjście', earnCw: 'zapis cache', earnCr: 'odczyt cache',
   earnCost: '≈ {usd} (szacunek Claude Code po cenniku)', earnCtx: 'Kontekst: {pct}%', earnNone: 'Jeszcze nic. Tokeny pojawią się po pierwszej turze.',
-  earnCopilot: 'Copilot nie podaje tokenów dla pojedynczej sesji.',
+  earnCopilot: 'Brak zapisanego odczytu AIC. Dane są dostępne dla sesji Copilot CLI z lokalnym zapisem zużycia.',
+  earnCopilotLocal: 'AIC tej sesji z ostatniego lokalnego zapisu Copilot CLI. Odczyt może być opóźniony względem terminala.',
+  earnUsageDetails: 'Odczytane zużycie tokenów (może obejmować jeszcze niewypłaconą turę):',
+  earnError: 'Nie udało się odświeżyć zarobków: {msg}',
+  earnAicLabel: 'Zarobione: {n} AIC', earnTokenLabel: 'Zarobione: {n} tok.',
   a_earned: { m: 'zarobił {n} tokenów', f: 'zarobiła {n} tokenów' },
-  bankName: 'Bank', bankSub: 'Płaci robotom za pracę i pokazuje, ile limitu zostało.', bankOpen: 'Otwórz bank', closeBank: 'Zamknij bank',
+  a_earnedAic: { m: 'zarobił {n} AIC', f: 'zarobiła {n} AIC' },
+  bankName: 'Bank', bankSub: 'Sumuje dzienne wypłaty dla robotów. Limity kont są osobną, opcjonalną informacją.', bankOpen: 'Otwórz bank', closeBank: 'Zamknij bank',
+  bankToday: 'Dziś', bankDaily: 'Wypłacono dzisiaj', bankDailyShort: 'Dziś: {aic} AIC · {tokens} tok.',
+  bankDailyMissing: 'Brak danych dziennych. Uruchom aktualną wersję serwera.',
+  bankDailyNote: 'Lokalny dzień serwera. Tylko zaobserwowane sesje: tokeny Claude i zapisane AIC Copilota, bez przeliczania między nimi. To nie pozostały limit konta.',
   bank5h: 'Okno 5-godzinne', bank7d: 'Okno tygodniowe', bankSpend: 'Limit wydatków', bankLeft: 'zostało {pct}%', bankResets: 'odnowi się {when}',
   bankClaudeNone: 'Brak danych. Limity widać tylko w planach Pro i Max, po pierwszej odpowiedzi Claude Code z zainstalowanym status line.',
   bankCopilotReq: '{used} z {allowance} zapytań premium w miesiącu {month}', bankCopilotUsed: '{used} zapytań premium w miesiącu {month}',
-  bankCopilotNone: 'Niepodłączony. Uruchom: pnpm copilot:setup', bankCopilotErr: 'Ostatni odczyt się nie udał: {msg}',
+  bankCopilotNone: 'Opcjonalny limit zapytań premium niepodłączony (pnpm copilot:setup). Lokalne AIC działają niezależnie.', bankCopilotErr: 'Ostatni odczyt się nie udał: {msg}',
   bankCost: 'Koszt sesji na żywo', bankCostNote: 'szacunek Claude Code po cenniku',
-  bankSource: 'Skąd liczby: Claude z status line Claude Code, Copilot z API rozliczeń GitHuba (co 10 minut).',
+  bankSource: 'Wypłaty: transkrypty Claude i lokalne zapisy AIC Copilot CLI, bez konfiguracji rozliczeń. Limity: status line Claude i opcjonalne API GitHuba (co 10 minut).',
   bankDemo: 'Demo: bank jest symulowany.',
-  lgBank: 'Bank', lgBankD: 'Płaci robotom monetami za tokeny. Szklane skarbce pokazują, ile limitu zostało: lewy Claude, prawy Copilot.',
+  lgBank: 'Bank', lgBankD: 'Sumuje dzienne wypłaty: tokeny Claude i AIC Copilota. Monety są animacją. Szklane skarbce pokazują osobno opcjonalne limity kont.',
   copilotMark: 'Copilot',
+  hTime: 'Czas sesji', timeLife: 'Czas życia', timeWork: 'Praca', timeWait: 'Czekanie na Ciebie', timeIdle: 'Bezczynność',
+  timeNote: 'Od pierwszej obserwacji. Praca = myślenie i narzędzia; czekanie = zgoda lub pytanie; bezczynność = przerwa między turami. Według hooków, nie zużycia CPU. Liczniki są zapisywane lokalnie.',
+  timeDemo: 'Demo: czas od uruchomienia symulacji, bez zapisu na dysku.',
+  timeGap: 'Poza obserwacją: {time}. Przerw w działaniu wioski nie doliczamy do pracy, czekania ani bezczynności.',
+  timeOffline: 'Brak połączenia — wartości z ostatniej aktualizacji serwera.',
+  timeMissing: 'Brak danych czasowych. Uruchom aktualną wersję serwera.',
+  duration: '{h} godz. {m} min {s} s',
 };
 
 const en: Record<string, Entry> = {
@@ -149,18 +164,33 @@ const en: Record<string, Entry> = {
   demoDone: 'Done: {task}',
   hEarned: 'Earned', earnTokens: 'tokens', earnIn: 'input', earnOut: 'output', earnCw: 'cache write', earnCr: 'cache read',
   earnCost: '≈ {usd} (Claude Code estimate at list price)', earnCtx: 'Context: {pct}%', earnNone: 'Nothing yet. Tokens show up after the first turn.',
-  earnCopilot: 'Copilot does not report tokens per session.',
+  earnCopilot: 'No saved AIC reading. Available for Copilot CLI sessions with locally recorded usage.',
+  earnCopilotLocal: "This session's AIC from the latest local Copilot CLI checkpoint. May lag behind the terminal.",
+  earnUsageDetails: 'Read token usage (may include a turn not paid out yet):',
+  earnError: 'Could not refresh earnings: {msg}',
+  earnAicLabel: 'Earned: {n} AIC', earnTokenLabel: 'Earned: {n} tokens',
   a_earned: 'earned {n} tokens',
-  bankName: 'Bank', bankSub: 'Pays the robots for their work and shows how much of each limit is left.', bankOpen: 'Open the bank', closeBank: 'Close the bank',
+  a_earnedAic: 'earned {n} AIC',
+  bankName: 'Bank', bankSub: 'Adds up daily robot payouts. Account limits are separate, optional information.', bankOpen: 'Open the bank', closeBank: 'Close the bank',
+  bankToday: 'Today', bankDaily: 'Paid out today', bankDailyShort: 'Today: {aic} AIC · {tokens} tokens',
+  bankDailyMissing: 'No daily data. Start the current server version.',
+  bankDailyNote: "Server's local day. Observed sessions only: Claude tokens and saved Copilot AIC, with no conversion between them. Not your remaining account allowance.",
   bank5h: '5-hour window', bank7d: 'Weekly window', bankSpend: 'Spend limit', bankLeft: '{pct}% left', bankResets: 'resets {when}',
   bankClaudeNone: 'No data yet. Limits show only on Pro and Max plans, after the first Claude Code answer with the status line installed.',
   bankCopilotReq: '{used} of {allowance} premium requests in {month}', bankCopilotUsed: '{used} premium requests in {month}',
-  bankCopilotNone: 'Not connected. Run: pnpm copilot:setup', bankCopilotErr: 'The last check failed: {msg}',
+  bankCopilotNone: 'Optional premium-request limit not connected (pnpm copilot:setup). Local AIC works independently.', bankCopilotErr: 'The last check failed: {msg}',
   bankCost: 'Cost of live sessions', bankCostNote: 'Claude Code estimate at list price',
-  bankSource: 'Where the numbers come from: Claude from the Claude Code status line, Copilot from the GitHub billing API (every 10 minutes).',
+  bankSource: 'Payouts: Claude transcripts and local Copilot CLI AIC checkpoints, with no billing setup. Limits: Claude status line and optional GitHub API (every 10 minutes).',
   bankDemo: 'Demo: the bank is simulated.',
-  lgBank: 'Bank', lgBankD: 'Pays robots in coins for their tokens. The glass vaults show how much of each limit is left: left Claude, right Copilot.',
+  lgBank: 'Bank', lgBankD: 'Adds up daily Claude-token and Copilot-AIC payouts. Coins are an animation. Glass vaults show separate, optional account limits.',
   copilotMark: 'Copilot',
+  hTime: 'Session time', timeLife: 'Lifetime', timeWork: 'Work', timeWait: 'Waiting for you', timeIdle: 'Idle',
+  timeNote: 'Since first observed. Work = thinking and tools; waiting = approval or a question; idle = between turns. Based on hooks, not CPU usage. Counters are saved locally.',
+  timeDemo: 'Demo: time since the simulation started, not saved to disk.',
+  timeGap: 'Unobserved: {time}. Gaps while the village is off are not counted as work, waiting or idle.',
+  timeOffline: 'Disconnected — values from the last server update.',
+  timeMissing: 'No timing data. Start the current server version.',
+  duration: '{h}h {m}m {s}s',
 };
 
 const STR: Record<Lang, Record<string, Entry>> = { pl, en };
@@ -239,6 +269,17 @@ export function fmtCompact(n: number): string {
 /** Full number with grouping in the UI language. */
 export function fmtNumber(n: number): string {
   return new Intl.NumberFormat(lang === 'pl' ? 'pl-PL' : 'en-US').format(Math.round(n));
+}
+
+/** Keep native integer precision in storage; display nano-AIC as credits like the CLI. */
+export function fmtAic(nanoAic: number): string {
+  return new Intl.NumberFormat(lang === 'pl' ? 'pl-PL' : 'en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 }).format(nanoAic / 1e9);
+}
+
+/** Elapsed time, with unbounded hours rather than wrapping after one day. */
+export function fmtDuration(ms: number): string {
+  const sec = Math.max(0, Math.floor(ms / 1000));
+  return t('duration', { h: Math.floor(sec / 3600), m: Math.floor(sec / 60) % 60, s: sec % 60 });
 }
 
 /** "$3.40" in the UI language. */

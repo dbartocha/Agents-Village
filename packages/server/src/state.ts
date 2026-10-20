@@ -1,10 +1,11 @@
 import {
-  PROTOCOL_VERSION, QUESTION_TOOLS, ROBOT_NAMES, clip, projectName, stationForTool, summarizeTool,
+  PROTOCOL_VERSION, QUESTION_TOOLS, ROBOT_NAMES, advanceTiming, clip, newSessionTiming, projectName, stationForTool, summarizeTool,
 } from '../../shared/src/index.ts';
 import type {
-  Activity, ActivityKind, Bank, CopilotBank, HookPayload, Provider, Resolution, ServerMessage, SessionInfo, Snapshot, TokenUsage,
+  Activity, ActivityKind, Bank, CopilotBank, HookPayload, PayoutUnit, Provider, Resolution, ServerMessage, SessionInfo, SessionTiming, Snapshot, TokenUsage,
 } from '../../shared/src/index.ts';
 import type { StatusLineInfo } from './statusline.ts';
+import { PayoutLedger } from './payouts.ts';
 
 export interface StateOptions {
   approvals: boolean;
@@ -15,6 +16,9 @@ export interface StateOptions {
   endedTtlMs?: number;
   /** Sessions with no events for this long are removed (Claude Code was closed without SessionEnd). */
   staleTtlMs?: number;
+  /** Timing-only history loaded from disk; inactive sessions are not resurrected as robots. */
+  timings?: Map<string, SessionTiming>;
+  payouts?: PayoutLedger;
 }
 
 export interface HookOutcome {
@@ -35,14 +39,19 @@ export class VillageState {
   readonly sessions = new Map<string, SessionInfo>();
   readonly recent: Activity[] = [];
   readonly bank: Bank = {};
+  readonly timings: Map<string, SessionTiming>;
+  readonly payouts: PayoutLedger;
   private seq = 0;
   private permSeq = 0;
   private readonly listeners = new Set<Listener>();
   private readonly now: () => number;
-  private readonly opts: Required<Omit<StateOptions, 'now'>>;
+  private readonly opts: Required<Omit<StateOptions, 'now' | 'timings' | 'payouts'>>;
 
   constructor(options: StateOptions) {
     this.now = options.now ?? Date.now;
+    this.timings = options.timings ?? new Map();
+    this.payouts = options.payouts ?? new PayoutLedger();
+    this.bank.daily = this.payouts.daily(this.now());
     this.opts = {
       approvals: options.approvals,
       approvalTimeoutSec: options.approvalTimeoutSec,
@@ -60,6 +69,7 @@ export class VillageState {
   }
 
   snapshot(version: string): Snapshot {
+    this.refreshDailyPayouts();
     return {
       protocol: PROTOCOL_VERSION,
       version,
@@ -111,6 +121,8 @@ export class VillageState {
         break;
       }
       case 'PermissionRequest': {
+        // Copilot fires this before auto-approval; only permission_prompt confirms a user prompt.
+        if (provider === 'copilot') break;
         const tool = str(p.tool_name) || s.currentTool?.tool || 'Tool';
         const target = summarizeTool(tool, p.tool_input, s.cwd) || s.currentTool?.target || '';
         const id = `perm-${++this.permSeq}`;
@@ -127,7 +139,7 @@ export class VillageState {
       case 'Notification': {
         const type = str(p.notification_type);
         const message = clip(p.message, 220);
-        if (type === 'permission_prompt' || (!type && /permission/i.test(message))) {
+        if (type === 'permission_prompt' || (provider === 'claude' && !type && /permission/i.test(message))) {
           if (!s.pending) {
             s.pending = {
               id: `perm-${++this.permSeq}`,
@@ -234,11 +246,31 @@ export class VillageState {
     return true;
   }
 
-  /** The bank pays the robot: tokens used since the previous 'earned'. */
-  earned(sessionId: string, tokens: number): Activity | undefined {
+  /** A cumulative source total pays only the difference, including after a server restart. */
+  pay(sessionId: string, unit: PayoutUnit, total: number, at = this.now()): Activity | undefined {
     const s = this.sessions.get(sessionId);
-    if (!s || tokens <= 0) return undefined;
-    return this.emit(s, 'earned', { tokens });
+    if (!s) return undefined;
+    if (unit !== (s.provider === 'copilot' ? 'nanoAic' : 'tokens')) throw new Error('Wrong payout unit for this provider');
+    const delta = this.payouts.pay(sessionId, unit, total, at);
+    s.earnings = this.payouts.earnings(sessionId);
+    this.refreshDailyPayouts();
+    if (!delta) { this.broadcast({ type: 'session', session: structuredClone(s) }); return undefined; }
+    return this.emit(s, 'earned', unit === 'tokens' ? { tokens: delta } : { nanoAic: delta });
+  }
+
+  setEarningsError(id: string, error?: string): void {
+    const s = this.sessions.get(id);
+    if (!s || s.earningsError === error) return;
+    s.earningsError = error;
+    this.broadcast({ type: 'session', session: structuredClone(s) });
+  }
+
+  private refreshDailyPayouts(): void {
+    const daily = this.payouts.daily(this.now());
+    const prev = this.bank.daily;
+    if (prev?.day === daily.day && prev.tokens === daily.tokens && prev.nanoAic === daily.nanoAic) return;
+    this.bank.daily = daily;
+    this.broadcast({ type: 'bank', bank: structuredClone(this.bank) });
   }
 
   /** Model, cost, context and Claude limits from the Claude Code status line. Broadcasts only real changes. */
@@ -289,6 +321,7 @@ export class VillageState {
     for (const [id, s] of this.sessions) {
       const age = now - s.updatedAt;
       if ((s.status === 'ended' && age > this.opts.endedTtlMs) || age > this.opts.staleTtlMs) {
+        if (s.timing) advanceTiming(s.timing, undefined, now);
         this.sessions.delete(id);
         removed.push(id);
         this.broadcast({ type: 'removed', sessionId: id });
@@ -297,14 +330,28 @@ export class VillageState {
     return removed;
   }
 
+  /** Checkpoint ongoing intervals outside hook handlers; pause them on server shutdown. */
+  checkpointTimings(pause = false): void {
+    const now = this.now();
+    this.refreshDailyPayouts();
+    for (const s of this.sessions.values()) {
+      if (!s.timing) continue;
+      advanceTiming(s.timing, pause ? undefined : s.status, now);
+      this.broadcast({ type: 'session', session: structuredClone(s) });
+    }
+  }
+
   private ensureSession(p: HookPayload, now: number, provider: Provider): SessionInfo {
     let s = this.sessions.get(p.session_id);
     if (!s) {
       const { name, f } = this.pickName();
+      const timing = this.timings.get(p.session_id) ?? newSessionTiming(now);
+      this.timings.set(p.session_id, timing);
       s = {
         id: p.session_id, provider, name, f,
         cwd: str(p.cwd), project: projectName(str(p.cwd)),
-        status: 'idle', startedAt: now, updatedAt: now, subagents: 0, toolCount: 0,
+        status: 'idle', startedAt: timing.startedAt, updatedAt: now, timing, subagents: 0, toolCount: 0,
+        earnings: this.payouts.earnings(p.session_id),
       };
       this.sessions.set(s.id, s);
     } else if (s.status === 'ended' && p.hook_event_name !== 'SessionEnd') {
@@ -334,6 +381,7 @@ export class VillageState {
 
   private emit(s: SessionInfo, kind: ActivityKind, extra: Partial<Activity>): Activity {
     const activity: Activity = { seq: ++this.seq, at: this.now(), sessionId: s.id, kind, ...extra };
+    if (s.timing) advanceTiming(s.timing, s.status, activity.at);
     for (const k of Object.keys(activity) as Array<keyof Activity>) if (activity[k] === undefined) delete activity[k];
     this.recent.push(activity);
     if (this.recent.length > this.opts.recentLimit) this.recent.splice(0, this.recent.length - this.opts.recentLimit);

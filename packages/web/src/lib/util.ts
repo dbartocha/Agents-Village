@@ -35,4 +35,12 @@ export const $ = <T extends HTMLElement = HTMLElement>(sel: string): T => {
   if (!el) throw new Error(`Missing element ${sel}`);
   return el;
 };
+/** Snap the label's top-left corner after centering, so text stays on physical pixels. */
+export function placeScreenLabel(el: HTMLElement, x: number, y: number): void {
+  const { width, height } = el.getBoundingClientRect();
+  const dpr = window.devicePixelRatio || 1;
+  const left = Math.round((x - width / 2) * dpr) / dpr;
+  const top = Math.round((y - height) * dpr) / dpr;
+  el.style.transform = `translate(${left}px,${top}px)`;
+}
 export const reduceMotion = typeof matchMedia === 'function' && matchMedia('(prefers-reduced-motion: reduce)').matches;

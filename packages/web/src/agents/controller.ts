@@ -32,7 +32,7 @@ export interface VillageEvents {
   feed(items: FeedItem[]): void;
   pop(robot: Robot, key: string, kind: PopKind): void;
   /** The coins of an 'earned' activity reached the robot. */
-  paid(robot: Robot, tokens: number): void;
+  paid(robot: Robot, payout: Activity): void;
   /** The bank changed (snapshot or a 'bank' message). */
   bank(bank: Bank): void;
 }
@@ -48,6 +48,8 @@ export class Village {
   bank: Bank = {};
   private feedItems: FeedItem[] = [];
   private readonly colorIdx: Record<AgentKind, number> = { claude: 0, copilot: 0 };
+  private readonly pendingPayouts = new Map<Robot, Activity>();
+  private readonly payoutsInFlight = new Set<Robot>();
 
   private readonly town: Town;
   private readonly events: VillageEvents;
@@ -89,7 +91,15 @@ export class Village {
           this.events.changed();
         }
         r.onActivity(a, s);
-        if (a.kind === 'earned' && a.tokens) this.payOut(r, a.tokens);
+        if (a.kind === 'earned' && (a.tokens || a.nanoAic)) {
+          const previous = this.pendingPayouts.get(r);
+          this.pendingPayouts.set(r, {
+            ...a,
+            ...(a.nanoAic !== undefined
+              ? { nanoAic: (previous?.nanoAic ?? 0) + a.nanoAic }
+              : { tokens: (previous?.tokens ?? 0) + (a.tokens ?? 0) }),
+          });
+        }
         if (FEED_KINDS.has(a.kind) && !(a.kind === 'attention' && a.attention === 'idle')) this.pushFeed({ kind: 'activity', robotId: r.id, a, fresh: true });
         this.events.changed(r);
         break;
@@ -104,7 +114,7 @@ export class Village {
         break;
       }
       case 'session': {
-        // Tokens, model or cost changed; the robot's behaviour does not depend on these.
+        // Metadata or timing checkpoint; the robot's behaviour does not depend on these.
         const r = this.robots.get(msg.session.id);
         if (r) { r.session = msg.session; this.events.changed(r); }
         break;
@@ -127,6 +137,8 @@ export class Village {
   clear(): void {
     for (const r of this.robots.values()) r.dispose();
     this.robots.clear();
+    this.pendingPayouts.clear();
+    this.payoutsInFlight.clear();
     this.feedItems = [];
     this.events.feed(this.feedItems);
     this.events.changed();
@@ -145,6 +157,15 @@ export class Village {
     for (const r of this.robots.values()) {
       r.update(dt, camAz);
       r.pose(t, dt);
+      // Finish queued work before rewarding the robot on its way back to the charger.
+      if (r.session.status === 'idle' && (r.homeBound || r.charging) && !r.leaving && !this.payoutsInFlight.has(r)) {
+        const payout = this.pendingPayouts.get(r);
+        if (payout) {
+          this.pendingPayouts.delete(r);
+          this.payoutsInFlight.add(r);
+          this.payOut(r, payout);
+        }
+      }
       if (r.phase === 'work' && r.beat && !r.beat.think) {
         if (r.beat.station === 'forge') busy.forge++;
         else if (r.beat.station === 'tower') busy.tower++;
@@ -155,14 +176,16 @@ export class Village {
   }
 
   /** The bank pays the robot: 6–12 coins fly from the bank, then "+18K" pops over its head. */
-  private payOut(r: Robot, tokens: number): void {
-    const n = Math.round(Math.min(12, Math.max(6, (Math.log10(Math.max(10, tokens)) - 2) * 1.6 + 4)));
+  private payOut(r: Robot, payout: Activity): void {
+    const amount = payout.nanoAic !== undefined ? payout.nanoAic / 1e9 : payout.tokens ?? 0;
+    const n = Math.round(Math.min(12, Math.max(6, (Math.log10(Math.max(10, amount)) - 2) * 1.6 + 4)));
     const alive = () => (this.robots.get(r.id) === r && !r.leaving ? { x: r.x, y: 1.1 * Math.max(0.3, r.scale), z: r.z } : null);
     flyCoins(this.town.bankCoins, alive, n, () => {
+      this.payoutsInFlight.delete(r);
       if (!alive()) return;
       burst(r.x, 1.3, r.z, '#ffc93d', 8, { speed: 1.6, up: 1.8, g: 6, life: 0.6, size: 0.05 });
-      r.cheer();
-      this.events.paid(r, tokens);
+      if (r.session.status === 'idle') r.cheer();
+      this.events.paid(r, payout);
     });
   }
 
@@ -173,6 +196,8 @@ export class Village {
     const r = new Robot(s, color, {
       onBuild: n => this.town.grow(n),
       onGone: robot => {
+        this.pendingPayouts.delete(robot);
+        this.payoutsInFlight.delete(robot);
         robot.dispose();
         this.robots.delete(robot.id);
         this.events.changed();

@@ -1,4 +1,4 @@
-/** Gold coins that fly from the bank to a robot when it "earns" tokens. */
+/** Gold coins that carry a completed turn's visual reward from the bank to its robot. */
 import * as THREE from 'three';
 import { reduceMotion } from '../lib/util';
 import { cyl, scene, toon } from './kit';
@@ -11,14 +11,14 @@ interface Coin {
   delay: number;
   dur: number;
   spin: number;
-  last?: () => void;
+  arrived: () => void;
 }
 
-const GEO = cyl(0.22, 0.22, 0.06, 20);
+const GEO = cyl(0.26, 0.26, 0.07, 20);
 const MAT = toon('#ffc93d');
 const pool: THREE.Mesh[] = [];
 const flying: Coin[] = [];
-const FLIGHT = 1.2;
+const FLIGHT = 1.4;
 
 /**
  * Sends n coins along an arc from `from` to wherever `to()` is when they land (the robot may walk).
@@ -26,6 +26,8 @@ const FLIGHT = 1.2;
  */
 export function flyCoins(from: THREE.Vector3, to: Coin['to'], n: number, done?: () => void): void {
   if (reduceMotion) n = Math.min(n, 3);
+  let remaining = n;
+  const arrived = () => { if (--remaining === 0) done?.(); };
   for (let i = 0; i < n; i++) {
     const m = pool.pop() ?? new THREE.Mesh(GEO, MAT);
     m.castShadow = false;
@@ -33,8 +35,8 @@ export function flyCoins(from: THREE.Vector3, to: Coin['to'], n: number, done?: 
     scene.add(m);
     flying.push({
       m, to, from: from.clone().add(new THREE.Vector3((Math.random() - 0.5) * 0.6, Math.random() * 0.3, (Math.random() - 0.5) * 0.6)),
-      t: 0, delay: i * 0.07, dur: FLIGHT * (0.9 + Math.random() * 0.2), spin: 6 + Math.random() * 6,
-      last: i === n - 1 ? done : undefined,
+      t: 0, delay: i * 0.09, dur: FLIGHT * (0.9 + Math.random() * 0.2), spin: 6 + Math.random() * 6,
+      arrived,
     });
   }
 }
@@ -49,7 +51,7 @@ export function updateCoins(dt: number): void {
       scene.remove(c.m);
       pool.push(c.m);
       flying.splice(i, 1);
-      c.last?.();
+      c.arrived();
       continue;
     }
     const k = c.t, e = 1 - Math.pow(1 - k, 2);

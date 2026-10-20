@@ -1,11 +1,11 @@
 /** Name tags, "!" / "?" bubbles and speech pops that float above robots (plain DOM over the canvas). */
 import { AGENT_LABELS, modelLabel } from '../../../shared/src/index.ts';
 import type { PopKind, Robot } from '../agents/robot';
-import { $ } from '../lib/util';
+import { $, placeScreenLabel } from '../lib/util';
 import type { CameraRig } from '../world/camera';
-import { t } from './i18n';
+import { fmtAic, fmtCompact, t } from './i18n';
 
-interface Tag { el: HTMLDivElement; bubble: HTMLButtonElement; name: HTMLSpanElement; model: HTMLSpanElement }
+interface Tag { el: HTMLDivElement; bubble: HTMLButtonElement; name: HTMLSpanElement; model: HTMLSpanElement; earnings: HTMLSpanElement }
 
 export class Tags {
   private readonly root = $('#tags');
@@ -23,6 +23,15 @@ export class Tags {
       let tag = this.tags.get(r.id);
       if (!tag) tag = this.create(r);
       tag.name.textContent = r.name;
+      const earned = r.session.earnings;
+      tag.earnings.hidden = !earned;
+        if (earned) {
+          const amount = earned.unit === 'nanoAic' ? fmtAic(earned.total) : fmtCompact(earned.total);
+          tag.earnings.querySelector('strong')!.textContent = amount;
+          tag.earnings.querySelector('.unit')!.textContent = earned.unit === 'nanoAic' ? 'AIC' : t('earnTokens');
+          tag.earnings.title = t(earned.unit === 'nanoAic' ? 'earnAicLabel' : 'earnTokenLabel', { n: amount });
+          tag.earnings.querySelector('.sr')!.textContent = t('hEarned') + ': ';
+        }
       // "Atlas · Opus": the model once the status line or the transcript told us.
       const model = modelLabel(r.session);
       const modelText = model ? ' · ' + model : '';
@@ -48,7 +57,7 @@ export class Tags {
       const p = rig.toScreen(r.x, 1.9 * Math.max(0.3, r.scale), r.z);
       const vis = p.visible && r.scale > 0.3 && p.x > -40 && p.x < rig.width + 40 && p.y > -60 && p.y < rig.height + 60;
       tag.el.classList.toggle('off', !vis);
-      if (vis) tag.el.style.transform = `translate3d(${p.x.toFixed(1)}px,${p.y.toFixed(1)}px,0) translate(-50%,-100%)`;
+      if (vis) placeScreenLabel(tag.el, p.x, p.y);
     }
   }
 
@@ -60,12 +69,25 @@ export class Tags {
   popText(r: Robot, text: string, kind: PopKind | 'coin', rig: CameraRig): void {
     const el = document.createElement('div');
     el.className = 'pop ' + kind;
-    el.textContent = text;
+    if (kind === 'coin') {
+      const coin = document.createElement('i');
+      coin.className = 'coin-token';
+      coin.setAttribute('aria-hidden', 'true');
+      el.append(coin);
+      const badge = this.tags.get(r.id)?.earnings;
+      if (badge) {
+        badge.classList.remove('received');
+        void badge.offsetWidth;
+        badge.classList.add('received');
+      }
+    }
+    el.append(document.createTextNode(text));
     const p = rig.toScreen(r.x, 2.3, r.z);
+    const label = kind === 'coin' ? this.tags.get(r.id)?.el.getBoundingClientRect() : undefined;
     el.style.left = p.x + 'px';
-    el.style.top = p.y + 'px';
+    el.style.top = (label?.height ? label.top - 14 : p.y) + 'px';
     this.root.appendChild(el);
-    setTimeout(() => el.remove(), 1650);
+    setTimeout(() => el.remove(), kind === 'coin' ? 2450 : 1650);
   }
 
   clear(): void {
@@ -96,12 +118,16 @@ export class Tags {
       mark.textContent = t('copilotMark');
       nameBtn.append(mark);
     }
-    el.append(bubble, nameBtn);
+    const earnings = document.createElement('span');
+    earnings.className = 'earnings';
+    earnings.innerHTML = '<i class="coin-token" aria-hidden="true"></i><span class="sr"></span><strong></strong><span class="unit"></span>';
+    earnings.hidden = true;
+    el.append(bubble, nameBtn, earnings);
     const pickIt = () => this.onPick(r.id);
     bubble.addEventListener('click', pickIt);
     nameBtn.addEventListener('click', pickIt);
     this.root.appendChild(el);
-    const tag = { el, bubble, name, model };
+    const tag = { el, bubble, name, model, earnings };
     this.tags.set(r.id, tag);
     return tag;
   }

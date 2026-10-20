@@ -1,10 +1,10 @@
 /** The robot panel: task, current step, request (approve / answer), last reply, recent steps, actions. */
-import { totalTokens } from '../../../shared/src/index.ts';
+import { sessionDurations } from '../../../shared/src/index.ts';
 import type { Activity, Decision, Text } from '../../../shared/src/index.ts';
 import type { Robot } from '../agents/robot';
 import { $, esc, pick } from '../lib/util';
 import type { App } from './app';
-import { L, fmtCompact, fmtNumber, fmtUsd, lang, t } from './i18n';
+import { L, fmtAic, fmtCompact, fmtDuration, fmtNumber, fmtUsd, lang, t } from './i18n';
 import { logLine, metaLine, nowHTML, statusOf } from './format';
 
 const LOG_SHOWN = 40;
@@ -17,6 +17,7 @@ export class Panel {
   private actionSig = '';
   private logSig = '';
   private earnSig = '';
+  private timeSig = '';
 
   private readonly app: App;
 
@@ -59,6 +60,7 @@ export class Panel {
     this.actionSig = '';
     this.logSig = '';
     this.earnSig = '';
+    this.timeSig = '';
     if (!r) {
       this.el.hidden = true;
       document.body.classList.remove('panel-open');
@@ -76,7 +78,7 @@ export class Panel {
   render(full = false): void {
     const r = this.robot;
     if (!r) return;
-    if (full) { this.actionSig = ''; this.logSig = ''; this.earnSig = ''; }
+    if (full) { this.actionSig = ''; this.logSig = ''; this.earnSig = ''; this.timeSig = ''; }
     const s = r.session;
     $('#pName').textContent = r.name;
     $('#pMeta').textContent = metaLine(r);
@@ -101,6 +103,7 @@ export class Panel {
     $('#pFollow').textContent = t(this.app.following ? 'unfollow' : 'follow');
     this.renderAction(r);
     this.renderEarned(r);
+    this.renderTiming(r);
     this.renderLog(r);
     this.tick();
   }
@@ -167,23 +170,27 @@ export class Panel {
     box.innerHTML = html;
   }
 
-  /** "Earned": tokens of this session (Claude Code transcript), cost estimate and context fill (status line). */
+  /** Persisted token/AIC payouts, plus available Claude usage, cost and context details. */
   private renderEarned(r: Robot): void {
     const s = r.session;
-    const sig = JSON.stringify([s.provider, s.usage, s.costUsd, s.contextPct, lang]);
+    const sig = JSON.stringify([s.provider, s.usage, s.costUsd, s.contextPct, s.earnings, s.earningsError, lang]);
     if (sig === this.earnSig) return;
     this.earnSig = sig;
     let html: string;
     if (s.provider === 'copilot') {
-      html = `<p class="big">—</p><p class="hint">${esc(t('earnCopilot'))}</p>`;
+      html = s.earnings?.unit === 'nanoAic'
+        ? `<p class="big">${esc(fmtAic(s.earnings.total))} <span>AIC</span></p><p class="hint">${esc(t('earnCopilotLocal'))}</p>`
+        : `<p class="big">—</p><p class="hint">${esc(t('earnCopilot'))}</p>`;
     } else {
-      const total = totalTokens(s.usage);
-      if (!s.usage || !total) html = `<p class="hint">${esc(t('earnNone'))}</p>`;
+      const earned = s.earnings;
+      if (!earned) html = `<p class="hint">${esc(t('earnNone'))}</p>`;
       else {
+        html = `<p class="big" title="${esc(fmtNumber(earned.total))}">${esc(fmtCompact(earned.total))} <span>${esc(t('earnTokens'))}</span></p>`;
+      }
+      if (s.usage) {
         const u = s.usage;
         const cell = (k: string, n: number) => `<div><dt>${esc(t(k))}</dt><dd title="${esc(fmtNumber(n))}">${esc(fmtCompact(n))}</dd></div>`;
-        html = `<p class="big" title="${esc(fmtNumber(total))}">${esc(fmtCompact(total))} <span>${esc(t('earnTokens'))}</span></p>`
-          + `<dl class="split">${cell('earnIn', u.input)}${cell('earnOut', u.output)}${cell('earnCw', u.cacheWrite)}${cell('earnCr', u.cacheRead)}</dl>`;
+        html += `<p class="hint">${esc(t('earnUsageDetails'))}</p><dl class="split">${cell('earnIn', u.input)}${cell('earnOut', u.output)}${cell('earnCw', u.cacheWrite)}${cell('earnCr', u.cacheRead)}</dl>`;
       }
       if (s.costUsd !== undefined) html += `<p class="cost">${esc(t('earnCost', { usd: fmtUsd(s.costUsd) }))}</p>`;
       if (s.contextPct !== undefined) {
@@ -191,6 +198,7 @@ export class Panel {
         html += `<div class="ctx"><span>${esc(t('earnCtx', { pct: Math.round(pct) }))}</span><div class="ctxbar${pct > 80 ? ' hot' : ''}"><i style="width:${pct}%"></i></div></div>`;
       }
     }
+    if (s.earningsError) html += `<p class="verr">${esc(t('earnError', { msg: s.earningsError }))}</p>`;
     $('#pEarn').innerHTML = html;
   }
 
@@ -219,6 +227,29 @@ export class Panel {
       el.appendChild(li);
     }
     if (atBottom) el.scrollTop = el.scrollHeight;
+  }
+
+  private renderTiming(r: Robot): void {
+    const timing = r.session.timing;
+    const connected = this.app.state === 'live' || this.app.state === 'demo';
+    const durations = timing ? sessionDurations(timing, connected ? Date.now() : timing.since) : undefined;
+    const cells = durations ? [
+      ['timeLife', durations.lifeMs],
+      ['timeWork', durations.workMs],
+      ['timeWait', durations.waitMs],
+      ['timeIdle', durations.idleMs],
+    ] as const : [];
+    const values = cells.map(([key, ms]) => [key, fmtDuration(ms)]);
+    const gap = durations && durations.unobservedMs >= 1000 ? fmtDuration(durations.unobservedMs) : '';
+    const sig = JSON.stringify([values, gap, connected, lang, this.app.source.kind]);
+    if (sig === this.timeSig) return;
+    this.timeSig = sig;
+    $('#pTime').innerHTML = durations
+      ? `<dl>${values.map(([key, value]) => `<div><dt>${esc(t(key))}</dt><dd>${esc(value)}</dd></div>`).join('')}</dl>`
+        + `<p class="hint">${esc(t(this.app.source.kind === 'demo' ? 'timeDemo' : 'timeNote'))}</p>`
+        + (gap ? `<p class="hint">${esc(t('timeGap', { time: gap }))}</p>` : '')
+        + (!connected ? `<p class="hint">${esc(t('timeOffline'))}</p>` : '')
+      : `<p class="hint">${esc(t('timeMissing'))}</p>`;
   }
 
   /** Answer options of the open question (demo questions carry them). */

@@ -76,7 +76,7 @@ test('Stop → delayed read → earned with the tokens since the previous earned
   const tracker = new UsageTracker({
     claudeDir: root, delayMs: 5,
     onUsage: (id, u, model) => state.setUsage(id, u, model),
-    onEarned: (id, n) => state.earned(id, n),
+    onEarned: (id, _n, total) => state.pay(id, 'tokens', total),
   });
   const hook = (event: string, extra: Record<string, unknown> = {}) => {
     const p = { hook_event_name: event, session_id: 's1', transcript_path: file, ...extra };

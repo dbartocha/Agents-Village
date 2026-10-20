@@ -7,6 +7,7 @@ import { parseAgentKind, parseHookPayload } from '../../shared/src/index.ts';
 import { normalizeCopilotPayload } from './copilot.ts';
 import { parseStatusLine } from './statusline.ts';
 import type { UsageTracker } from './usage.ts';
+import type { CopilotUsageTracker } from './copilot-usage.ts';
 import type { Decision, ServerMessage } from '../../shared/src/index.ts';
 import type { VillageConfig } from './config.ts';
 import { PermissionBroker, permissionHookResponse } from './permissions.ts';
@@ -21,6 +22,7 @@ export interface AppOptions {
   webRoot: string;
   /** Reads token usage from Claude Code transcripts after hooks (optional in tests). */
   usage?: UsageTracker;
+  copilotUsage?: CopilotUsageTracker;
   log?: (line: string) => void;
 }
 
@@ -122,6 +124,7 @@ export function createApp(opts: AppOptions): Server {
     const outcome = state.handleHook(parsed.value, provider);
     const p = parsed.value;
     if (provider === 'claude') opts.usage?.onHook(p);
+    else opts.copilotUsage?.onHook(p);
     log(`hook ${provider === 'copilot' ? 'copilot ' : ''}${p.hook_event_name}${typeof p.tool_name === 'string' ? ' ' + p.tool_name : ''} - ${p.session_id.replace(/^copilot:/, '').slice(0, 8)}`);
     // Copilot hooks are always answered at once: the village never decides for Copilot.
     if (!outcome.holdPermissionId || provider !== 'claude') return send(res, 200, '', 'text/plain; charset=utf-8');

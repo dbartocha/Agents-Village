@@ -6,6 +6,7 @@
  */
 import { spawn } from 'node:child_process';
 import { readFileSync } from 'node:fs';
+import { join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { loadStoredConfig, resolveConfig } from './config.ts';
 import { CopilotBankPoller } from './copilot-bank.ts';
@@ -13,6 +14,9 @@ import { createApp } from './http.ts';
 import { PermissionBroker } from './permissions.ts';
 import { VillageState } from './state.ts';
 import { UsageTracker } from './usage.ts';
+import { loadTimings, saveTimings } from './timing-store.ts';
+import { PayoutLedger } from './payouts.ts';
+import { CopilotUsageTracker } from './copilot-usage.ts';
 
 const pkg = JSON.parse(readFileSync(new URL('../package.json', import.meta.url), 'utf8')) as { version: string };
 const webRoot = fileURLToPath(new URL('../../web/dist', import.meta.url));
@@ -27,22 +31,50 @@ function main(): void {
   const config = resolveConfig();
   const quiet = process.argv.includes('--quiet');
   const log = (line: string) => { if (!quiet) console.log(`[village] ${new Date().toLocaleTimeString()} ${line}`); };
-  const state = new VillageState({ approvals: config.approvals, approvalTimeoutSec: config.approvalTimeoutSec });
+  const timingFile = join(config.configDir, 'session-times.json');
+  const payoutFile = join(config.configDir, 'payouts.json');
+  const state = new VillageState({
+    approvals: config.approvals, approvalTimeoutSec: config.approvalTimeoutSec, timings: loadTimings(timingFile),
+    payouts: PayoutLedger.load(payoutFile),
+  });
   const broker = new PermissionBroker();
   const usage = new UsageTracker({
     onUsage: (id, u, model) => state.setUsage(id, u, model),
-    onEarned: (id, tokens) => { if (state.earned(id, tokens)) log(`earned ${tokens} tokens - ${id.slice(0, 8)}`); },
+    onEarned: (id, _tokens, total) => { state.pay(id, 'tokens', total); },
     log,
   });
-  state.subscribe(msg => { if (msg.type === 'removed') usage.forget(msg.sessionId); });
+  const copilotUsage = new CopilotUsageTracker({
+    onCheckpoint: (id, checkpoint) => { state.pay(id, 'nanoAic', checkpoint.total, checkpoint.at); },
+    onError: (id, error) => state.setEarningsError(id, error),
+    log: message => console.error(`[village] ${message}`),
+  });
+  state.subscribe(msg => { if (msg.type === 'removed') { usage.forget(msg.sessionId); copilotUsage.forget(msg.sessionId); } });
   const copilot = loadStoredConfig().copilot;
   const poller = copilot?.username && copilot.githubToken
     ? new CopilotBankPoller({ settings: { username: copilot.username, githubToken: copilot.githubToken, monthlyAllowance: copilot.monthlyAllowance }, state, log })
     : undefined;
   poller?.start();
-  const server = createApp({ config, state, broker, version: pkg.version, webRoot, usage, log });
+  const server = createApp({ config, state, broker, version: pkg.version, webRoot, usage, copilotUsage, log });
   const pruneTimer = setInterval(() => state.prune(), 5_000);
   pruneTimer.unref();
+  let saving: Promise<void> | undefined;
+  const persist = (): Promise<void> => Promise.allSettled([
+    saveTimings(timingFile, state.timings), state.payouts.save(payoutFile),
+  ]).then(results => {
+    for (const result of results) {
+      if (result.status === 'rejected') {
+        console.error(`[village] Cannot save local timing/payout history:`, result.reason);
+        process.exitCode = 1;
+      }
+    }
+  });
+  const timingTimer = setInterval(() => {
+    void copilotUsage.poll();
+    if (saving) return;
+    state.checkpointTimings();
+    saving = persist().finally(() => { saving = undefined; });
+  }, 5_000);
+  timingTimer.unref();
 
   server.on('error', (err: NodeJS.ErrnoException) => {
     if (err.code === 'EADDRINUSE') {
@@ -67,14 +99,23 @@ function main(): void {
     if (config.open) openBrowser(url);
   });
 
-  const shutdown = () => {
+  let stopping = false;
+  const shutdown = async () => {
+    if (stopping) return;
+    stopping = true;
     log('shutting down');
+    clearInterval(pruneTimer);
+    clearInterval(timingTimer);
     broker.cancelAll();
     usage.stop();
     poller?.stop();
     server.close();
     server.closeAllConnections();
-    setTimeout(() => process.exit(0), 300).unref();
+    await copilotUsage.stop();
+    await usage.idle();
+    await saving;
+    state.checkpointTimings(true);
+    await persist();
   };
   process.on('SIGINT', shutdown);
   process.on('SIGTERM', shutdown);

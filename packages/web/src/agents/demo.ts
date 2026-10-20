@@ -2,7 +2,7 @@
  * Demo source: six simulated agents (the scenes from the prototype) that produce the same
  * activities as real Claude Code sessions. Used when no server is running, or on request.
  */
-import { PROTOCOL_VERSION, ROBOT_NAMES, stationForTool, totalTokens } from '../../../shared/src/index.ts';
+import { PROTOCOL_VERSION, ROBOT_NAMES, advanceTiming, localDay, newSessionTiming, stationForTool, totalTokens } from '../../../shared/src/index.ts';
 import type {
   Activity, ActivityKind, AgentKind, Bank, Decision, Localized, PendingPermission, SessionInfo, Snapshot, Text,
 } from '../../../shared/src/index.ts';
@@ -150,8 +150,9 @@ interface DemoAgent {
   state: AgentState;
   timer: number;
   later: { t: number; fn: () => void } | null;
-  /** Tokens already paid out by the bank ('earned'). */
+  /** Tokens or nano-AIC already paid out by the bank. */
   earnedBase: number;
+  nanoAic: number;
 }
 
 export class DemoSource implements Source {
@@ -206,7 +207,8 @@ export class DemoSource implements Source {
         a.s.toolCount += 1;
       }
       // Earlier turns were paid out already.
-      a.earnedBase = totalTokens(a.s.usage);
+      a.earnedBase = a.s.provider === 'copilot' ? a.nanoAic : totalTokens(a.s.usage);
+      a.s.earnings = { unit: a.s.provider === 'copilot' ? 'nanoAic' : 'tokens', total: a.earnedBase };
       a.si = si;
       setup(a);
     };
@@ -226,6 +228,7 @@ export class DemoSource implements Source {
     recent.sort((x, y) => x.at - y.at);
     const month = new Date().toISOString().slice(0, 7);
     this.bank = {
+      daily: { day: localDay(now), tokens: 0, nanoAic: 0 },
       claude: {
         fiveHour: { usedPct: 38, resetsAt: now + 2.3 * 3600_000 },
         sevenDay: { usedPct: 59, resetsAt: now + 3.4 * 86_400_000 },
@@ -233,12 +236,22 @@ export class DemoSource implements Source {
       },
       copilot: { used: 212, allowance: 300, month, updatedAt: now },
     };
+    for (const a of this.agents.values()) {
+      const earned = a.s.earnings!;
+      this.bank.daily![earned.unit] += earned.total;
+    }
     const snapshot: Snapshot = {
       protocol: PROTOCOL_VERSION, version: 'demo', approvals: true,
       sessions: [...this.agents.values()].map(a => structuredClone(a.s)),
       recent,
       bank: structuredClone(this.bank),
     };
+    for (const s of snapshot.sessions) {
+      const a = this.agents.get(s.id)!;
+      a.s.timing = newSessionTiming(now);
+      advanceTiming(a.s.timing, a.s.status, now);
+      s.timing = structuredClone(a.s.timing);
+    }
     sink.message({ type: 'snapshot', snapshot });
     for (const x of seeded) sink.say(x.id, 'you', x.text, x.at, true);
     sink.system('sysStartDemo');
@@ -291,6 +304,10 @@ export class DemoSource implements Source {
   private buffer: Activity[] = [];
 
   private tick(): void {
+    if (this.bank.daily?.day !== localDay(Date.now())) {
+      this.bank.daily = { day: localDay(Date.now()), tokens: 0, nanoAic: 0 };
+      this.sendBank();
+    }
     const now = performance.now();
     const dt = Math.min(0.5, (now - this.last) / 1000);
     this.last = now;
@@ -315,9 +332,9 @@ export class DemoSource implements Source {
     const now = Date.now();
     const s: SessionInfo = {
       id, provider: agent, name, f, cwd: '~/projects/shop', project: 'shop', status: 'idle',
-      startedAt: now, updatedAt: now, prompt: task, subagents: 0, toolCount: 0,
+      startedAt: now, updatedAt: now, timing: newSessionTiming(now), prompt: task, subagents: 0, toolCount: 0,
     };
-    // Like live: Copilot reports no model and no tokens per session.
+    // Copilot earnings use AIC, not a Claude token breakdown.
     if (agent === 'claude') {
       const m = model ?? pick(['Opus', 'Sonnet', 'Haiku'] as const);
       s.modelName = m;
@@ -326,7 +343,7 @@ export class DemoSource implements Source {
       s.costUsd = 0;
       s.contextPct = rnd(4, 9);
     }
-    const a: DemoAgent = { s, steps, si: 0, state: 'idle', timer: 0, later: null, earnedBase: 0 };
+    const a: DemoAgent = { s, steps, si: 0, state: 'idle', timer: 0, later: null, earnedBase: 0, nanoAic: 0 };
     this.agents.set(id, a);
     return a;
   }
@@ -340,6 +357,7 @@ export class DemoSource implements Source {
 
   private emit(a: DemoAgent, kind: ActivityKind, extra: Partial<Activity> = {}): void {
     const activity = this.act(a, kind, extra);
+    if (a.s.timing) advanceTiming(a.s.timing, a.s.status, activity.at);
     if (this.live) this.sink?.message({ type: 'activity', activity, session: structuredClone(a.s) });
     else this.buffer.push(activity);
   }
@@ -388,6 +406,10 @@ export class DemoSource implements Source {
 
   /** One step uses 2k–30k tokens, mostly cache reads, like a real agent. */
   private spend(a: DemoAgent): void {
+    if (a.s.provider === 'copilot') {
+      a.nanoAic += rint(100, 4000) * 10_000_000;
+      return;
+    }
     const u = a.s.usage;
     if (!u) return;
     const n = rint(2000, 30000);
@@ -428,22 +450,25 @@ export class DemoSource implements Source {
     const b = this.bank;
     if (a.s.provider === 'copilot') {
       if (b.copilot) { b.copilot = { ...b.copilot, used: Math.min(b.copilot.allowance ?? 300, b.copilot.used + 1), updatedAt: Date.now() }; this.sendBank(); }
-      return;
     }
-    const total = totalTokens(a.s.usage);
+    const unit = a.s.provider === 'copilot' ? 'nanoAic' : 'tokens';
+    const total = unit === 'nanoAic' ? a.nanoAic : totalTokens(a.s.usage);
     const delta = total - a.earnedBase;
     a.earnedBase = total;
     if (delta <= 0) return;
     setTimeout(() => {
       if (!this.live || this.agents.get(a.s.id) !== a) return;
-      this.emit(a, 'earned', { tokens: delta });
+      a.s.earnings = { unit, total };
+      if (b.daily?.day !== localDay(Date.now())) b.daily = { day: localDay(Date.now()), tokens: 0, nanoAic: 0 };
+      b.daily[unit] += delta;
+      this.emit(a, 'earned', unit === 'nanoAic' ? { nanoAic: delta } : { tokens: delta });
       const c = b.claude;
-      if (c?.fiveHour && c.sevenDay) {
+      if (unit === 'tokens' && c?.fiveHour && c.sevenDay) {
         c.fiveHour = { ...c.fiveHour, usedPct: Math.min(97, Math.round((c.fiveHour.usedPct + delta / 25_000) * 10) / 10) };
         c.sevenDay = { ...c.sevenDay, usedPct: Math.min(97, Math.round((c.sevenDay.usedPct + delta / 120_000) * 10) / 10) };
         c.updatedAt = Date.now();
-        this.sendBank();
       }
+      this.sendBank();
     }, 800);
   }
 

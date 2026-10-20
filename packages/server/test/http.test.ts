@@ -142,16 +142,27 @@ test('Copilot hooks on /hooks/copilot need the token and take the event from the
   assert.equal(s?.currentTool?.station, 'forge');
 });
 
-test('a Copilot permission request is never held, even with approvals on', async () => {
+test('Copilot waits only for a permission notification, never for the pre-check hook', async () => {
   const { base, state } = await start({ approvals: true });
-  const res = await fetch(`${base}/hooks/copilot?event=permissionRequest`, {
+  const post = (event: string, body: Record<string, unknown>) => fetch(`${base}/hooks/copilot?event=${event}`, {
     method: 'POST', headers: { 'content-type': 'application/json', 'x-agent-village-token': TOKEN },
-    body: JSON.stringify({ sessionId: 'p1', toolName: 'bash', toolInput: { command: 'rm -rf dist' } }),
+    body: JSON.stringify({ sessionId: 'p1', ...body }),
   });
+  await post('preToolUse', { toolName: 'bash', toolArgs: { command: 'npm test' } });
+  const res = await post('permissionRequest', { toolName: 'bash', toolInput: { command: 'npm test' } });
+  assert.equal(res.status, 200);
   assert.equal(await res.text(), '');
   const s = state.sessions.get('copilot:p1');
+  assert.equal(s?.status, 'working');
+  assert.equal(s?.pending, undefined);
+  const notification = await post('notification', { notification_type: 'permission_prompt', message: 'Permission needed' });
+  assert.equal(notification.status, 200);
+  assert.equal(await notification.text(), '');
   assert.equal(s?.status, 'waiting');
-  assert.equal(s?.pending?.approvable, false);
+  assert.equal(state.sessions.get('copilot:p1')?.pending?.approvable, false);
+  await post('postToolUse', { toolName: 'bash' });
+  assert.equal(s?.status, 'thinking');
+  assert.equal(s?.pending, undefined);
 });
 
 test('the status line updates the session and the bank, and unchanged values are not sent again', async () => {

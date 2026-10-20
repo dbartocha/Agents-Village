@@ -11,11 +11,12 @@
  * (CLAUDE_CONFIG_DIR or ~/.claude) are read, read-only. Only the four token counters and the model id
  * are kept; nothing from the transcript is stored or sent anywhere.
  */
-import { open, realpath } from 'node:fs/promises';
+import { realpath } from 'node:fs/promises';
 import { homedir } from 'node:os';
 import { join, sep } from 'node:path';
 import { totalTokens } from '../../shared/src/index.ts';
 import type { HookPayload, TokenUsage } from '../../shared/src/index.ts';
+import { JsonlTail } from './jsonl-tail.ts';
 
 export function claudeConfigDir(env: NodeJS.ProcessEnv = process.env): string {
   return env.CLAUDE_CONFIG_DIR || join(homedir(), '.claude');
@@ -37,41 +38,18 @@ export async function allowedTranscript(path: string, claudeDir: string): Promis
 const EMPTY = (): TokenUsage => ({ input: 0, output: 0, cacheWrite: 0, cacheRead: 0 });
 const KEYS = ['input', 'output', 'cacheWrite', 'cacheRead'] as const;
 const MAX_SEEN = 4000;
-const CHUNK = 4 * 1024 * 1024;
 
 /** Incremental reader of one transcript file. */
 export class TranscriptFile {
   readonly total = EMPTY();
   model?: string;
-  private offset = 0;
-  private rest: Buffer = Buffer.alloc(0);
+  private readonly tail = new JsonlTail();
   private readonly seen = new Map<string, TokenUsage>();
 
   /** Reads what was appended since the last call. Returns true when the totals grew. */
   async readNew(path: string): Promise<boolean> {
-    const fh = await open(path, 'r');
     let grew = false;
-    try {
-      const { size } = await fh.stat();
-      if (size < this.offset) { this.offset = 0; this.rest = Buffer.alloc(0); }
-      while (this.offset < size) {
-        const len = Math.min(CHUNK, size - this.offset);
-        const buf = Buffer.alloc(len);
-        const { bytesRead } = await fh.read(buf, 0, len, this.offset);
-        if (!bytesRead) break;
-        this.offset += bytesRead;
-        let data = this.rest.length ? Buffer.concat([this.rest, buf.subarray(0, bytesRead)]) : buf.subarray(0, bytesRead);
-        let nl = data.indexOf(10);
-        while (nl >= 0) {
-          if (this.line(data.subarray(0, nl).toString('utf8'))) grew = true;
-          data = data.subarray(nl + 1);
-          nl = data.indexOf(10);
-        }
-        this.rest = Buffer.from(data);
-      }
-    } finally {
-      await fh.close();
-    }
+    await this.tail.read(path, text => { if (this.line(text)) grew = true; });
     return grew;
   }
 
@@ -107,7 +85,7 @@ export interface UsageTrackerOptions {
   /** Wait after a hook before reading; the transcript can lag behind hooks. */
   delayMs?: number;
   onUsage: (sessionId: string, usage: TokenUsage, model?: string) => void;
-  onEarned: (sessionId: string, tokens: number) => void;
+  onEarned: (sessionId: string, tokens: number, cumulativeTokens: number) => void;
   log?: (line: string) => void;
 }
 
@@ -206,7 +184,7 @@ export class UsageTracker {
       const sum = totalTokens(total);
       const delta = sum - rec.earnedBase;
       rec.earnedBase = sum;
-      if (delta > 0) this.opts.onEarned(sessionId, delta);
+      if (delta > 0) this.opts.onEarned(sessionId, delta, sum);
     }
   }
 }
