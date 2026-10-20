@@ -11,7 +11,8 @@
 
 Watch and steer your Claude Code agents as little robots working in a round cartoon town.
 
-Every Claude Code session becomes a square-headed robot. When the agent reads files, its robot reads a tablet at the library. When it edits code, the robot hammers at the construction site and a tower grows. When it runs a command, sparks fly at the forge. When it needs you, it stops, waves and an exclamation mark pops up above its head. Click it to see who it is, what it is doing and what it needs.
+Every Claude Code or GitHub Copilot session becomes a square-headed robot, coloured by the agent it comes from. When the agent reads files, its robot reads a tablet at the library. When it edits code, the robot hammers at the construction site and a tower grows. When it runs a command, sparks fly at the forge. When it needs you, it stops, waves and an exclamation mark pops up above its head. Click it to see who it is, what it is doing and what it needs.
+At the end of every turn the town's bank pays the robot in gold coins for the tokens it used, and two glass vaults show how much of your Claude and Copilot limits is left.
 
 [IMPORTANT]
 ====
@@ -27,12 +28,12 @@ toc::[]
 
 [cols="1,3"]
 |===
-| What | A local web app that turns Claude Code activity into an animated 3D town.
+| What | A local web app that turns Claude Code and GitHub Copilot activity into an animated 3D town.
 | Who for | People who run several AI coding agents at once and want to see, at a glance, who is working and who is waiting for them.
-| How it gets data | Claude Code *hooks* (`type: "http"`) post every event to a small server on your computer.
+| How it gets data | Claude Code *hooks* (`type: "http"`) post every event to a small server on your computer; the server reads token counts from the Claude Code transcript files, and a Claude Code *status line* reports the model, cost and plan limits. GitHub Copilot (Copilot CLI and VS Code agent mode) runs a small forwarding script as a command hook; the Copilot vault asks the GitHub billing API. See <<hooks>>, <<bank>> and <<copilot>>.
 | Where it runs | Only on your computer: server on `http://localhost:{server-port}`, town in your browser.
 | Languages | Interface in English and Polish (switch in the top-left corner).
-| Status | Stage 1 (watch) and an experimental part of stage 2 (approve from the town). See <<status>>.
+| Status | Stage 1 (watch) with the bank, and an experimental part of stage 2 (approve from the town). See <<status>>.
 |===
 
 == How the town works
@@ -43,7 +44,7 @@ The town is a round island. A fountain sits on the plaza in the middle, a ring r
 
 [cols="1,1,3"]
 |===
-| Station | Claude Code tools | What the robot does
+| Station | Claude Code tools (Copilot tools are mapped to these, see <<copilot>>) | What the robot does
 
 | Library (purple dome) | `Read`, `Grep`, `Glob`, `LS` | Reads a glowing tablet. When the next step is an edit, it carries a crate to the construction site.
 | Construction site (crane) | `Edit`, `MultiEdit`, `Write`, `NotebookEdit` | Hammers. Every edit adds part of a floor to a round tower. A finished tower gets a roof, confetti and is then rebuilt.
@@ -52,7 +53,32 @@ The town is a round island. A fountain sits on the plaza in the middle, a ring r
 | Plaza (fountain) | everything else (`TodoWrite`, MCP tools, `Task`…) and "thinking" right after a prompt | Works on a tablet next to the fountain.
 | Charging station | — | A robot whose turn has finished stands on a pad and charges (sleepy eyes, green antenna light).
 | Factory | — | New sessions roll out of its door. Ended sessions walk back in.
+| Bank (columns, coin on the roof, two glass vaults) | — | Not a work station. Pays robots in coins at the end of each turn and shows how much of each limit is left. See <<bank>>.
 |===
+
+=== Robot colours
+
+The robot's body colour tells you which agent it is:
+
+* *Warm colours* (orange, amber, coral, pink…): Claude Code. The first one is orange `#e8794a`.
+* *Cool colours* (blue, violet, teal…): GitHub Copilot. The first one is blue `#4d8dff`.
+
+Robots of the same agent get different shades of its family, so they stay easy to tell apart. The legend explains the two families. The agent's name is in the robot's panel (first item of the line under its name) and in the tooltip of its name tag. Copilot robots also have a purple antenna bulb and a small purple "Copilot" mark on their name tag. The name tag shows the model once it is known ("Atlas · Opus 5.5"). The demo shows two Copilot robots (Nova, Pixel) among four Claude robots.
+
+[[bank]]
+=== The bank and earned tokens
+
+The bank pays the robots for their work. Two numbers matter:
+
+* *Earned* = the tokens the robot's session used (input, output, cache write, cache read), read from the Claude Code transcript. At the end of every turn 6–12 gold coins fly from the bank to the robot and "+18K" (PL: "+18 tys.") pops over its head; the feed says "Atlas earned 18K tokens". The robot's panel has an *Earned* section: the total, the four parts, Claude Code's own cost estimate at list price ("≈ $3.40") and a small bar for how full the context window is. Most tokens are usually cache reads; they are counted like the others.
+* *What is left* of each provider's limit, in two glass vaults on the sides of the bank. Seen from the town centre, the left vault is Claude (accent `#d97757`), the right one Copilot (accent `#8b5cf6`).
+** Claude: the coins show what is left of the 5-hour window; a thin ring marks what is left of the weekly window. From the Claude Code status line (Pro and Max plans only, after the first answer).
+** Copilot: `1 - used / allowance` of this month's premium requests, from the GitHub billing API (`pnpm copilot:setup`, see <<copilot>>).
+** Unknown: an empty grey vault.
+
+A label above the bank ("Claude 5h 62% · 7d 41%", "Copilot 212/300" or "Copilot —") and the chip next to the counters open the *bank card*: what is left in each window, the reset time in your local time, the cost of the live sessions (sum of their Claude Code estimates) and where the numbers come from. Clicking the building does the same.
+
+Copilot reports no tokens and no model per session, so a Copilot robot's *Earned* shows "—" with the hint "Copilot does not report tokens per session". The town never invents numbers.
 
 === Signals
 
@@ -88,7 +114,7 @@ npm install -g pnpm
 pnpm first-run
 ----
 +
-This downloads the parts the town needs, builds it and connects Claude Code to it (it adds hooks to your Claude Code settings; a backup of your settings is saved first).
+This downloads the parts the town needs, builds it and connects Claude Code and GitHub Copilot to it (it adds hooks and a status line to your Claude Code settings, with a backup saved first, and one hooks file for Copilot in `~/.copilot/hooks/`). A status line you already had keeps showing.
 +
 NOTE: Type `first-run`, not `setup`: `pnpm setup` is a built-in pnpm command that does something else.
 . *Start the town:*
@@ -99,14 +125,16 @@ pnpm start
 ----
 +
 Your browser opens `http://localhost:{server-port}`. Leave the terminal window open; closing it stops the town.
-. *Use Claude Code as usual*, in any project. Sessions that you start (or restart) from now on appear as robots.
+. *Use Claude Code or GitHub Copilot as usual*, in any project (Copilot: the `copilot` command line tool, or agent mode in VS Code chat). Sessions that you start (or restart) from now on appear as robots.
 
 [TIP]
 ====
 No agents running yet? Click *Demo* in the top-right corner to see six simulated robots at work.
 ====
 
-To stop the town, press kbd:[Ctrl+C] in its terminal. To disconnect Claude Code from the town completely, run `pnpm hooks:uninstall` in the project folder.
+To stop the town, press kbd:[Ctrl+C] in its terminal. To disconnect Claude Code and Copilot from the town completely, run `pnpm hooks:uninstall` in the project folder (your previous status line comes back).
+
+Optional: to fill the Copilot vault of the bank with this month's premium requests, follow <<copilot-vault>>.
 
 === Approving requests from the town (optional, experimental)
 
@@ -149,9 +177,10 @@ Open `http://localhost:{dev-port}` during development. Vite proxies `/events` an
 | `pnpm test` | All tests (`node --test`, no extra test framework).
 | `pnpm typecheck` | TypeScript checks for every package.
 | `pnpm check` | `test` + `typecheck` + `build`. Run before every commit.
-| `pnpm hooks:install [--approvals] [--port N] [--project DIR]` | Adds the hooks to Claude Code settings.
-| `pnpm hooks:uninstall [--project DIR]` | Removes only the hooks this project added.
-| `pnpm hooks:status [--project DIR]` | Shows which hooks are installed.
+| `pnpm hooks:install [--approvals] [--port N] [--project DIR] [--claude\|--copilot] [--no-statusline]` | Adds the hooks and the status line to Claude Code settings and writes the Copilot hooks file (Copilot is skipped with `--project`). `--claude` / `--copilot` (same as `--only claude\|copilot`) do one side only.
+| `pnpm hooks:uninstall [--project DIR] [--claude\|--copilot]` | Removes only the hooks this project added, puts your previous status line back, and deletes the Copilot hooks file.
+| `pnpm hooks:status [--project DIR]` | Shows which hooks and which status line are installed.
+| `pnpm copilot:setup --user NAME [--allowance 300]` | Connects the Copilot vault to your GitHub account (asks for the token without showing it). `--off` forgets account and token.
 |===
 
 The server can also run without `pnpm install`: `node packages/server/src/index.ts`.
@@ -176,10 +205,14 @@ You are working on Agent Village. Read this whole file before changing anything.
 agent-village/
 ├── readme.adoc                 ← this file, the source of truth
 ├── CLAUDE.md, AGENTS.md        ← pointers to readme.adoc for coding agents
+├── .claude/settings.json       ← project setting for Claude Code: no commit / PR attribution
 ├── .github/copilot-instructions.md, .cursor/rules/project.mdc   ← same pointer for Copilot and Cursor
 ├── package.json                ← root scripts (pnpm workspace)
 ├── scripts/
-│   ├── hooks.ts                ← CLI: install / uninstall / status of Claude Code hooks
+│   ├── hooks.ts                ← CLI: install / uninstall / status of Claude Code and Copilot hooks
+│   ├── copilot-hook.ts         ← command hook run by GitHub Copilot; forwards each event to the server
+│   ├── statusline.ts           ← Claude Code status line: prints the line, posts the JSON to the server
+│   ├── copilot-setup.ts        ← pnpm copilot:setup (GitHub account and token for the Copilot vault)
 │   └── dev.ts                  ← runs server + Vite together
 ├── prototype/
 │   └── agent-village-prototype.html   ← the original single-file prototype (reference only)
@@ -191,7 +224,11 @@ agent-village/
     │   ├── src/state.ts        ← sessions and activities (hook → activity mapping)
     │   ├── src/permissions.ts  ← holds PermissionRequest hooks until you click
     │   ├── src/http.ts         ← routes, security checks, static files
-    │   ├── src/hooks-config.ts ← add/remove our hooks in a settings object
+    │   ├── src/hooks-config.ts ← add/remove our hooks in a settings object; the Copilot hooks file
+    │   ├── src/copilot.ts      ← Copilot payload → Claude Code shaped payload
+    │   ├── src/usage.ts        ← tokens per session from Claude Code transcripts (incremental, read-only)
+    │   ├── src/statusline.ts   ← status line JSON → model, cost, context, Claude limits
+    │   ├── src/copilot-bank.ts ← Copilot premium requests from the GitHub billing API
     │   └── test/               ← node:test suites
     └── web/                    ← the town (Vite + TypeScript + three.js)
         ├── index.html          ← page markup (HUD, panel, dialog); token placeholder in a meta tag
@@ -202,9 +239,10 @@ agent-village/
             ├── world/          ← 3D only, no agent logic
             │   ├── kit.ts      ← renderer, materials, lights, day/night theme, light-unit conversion
             │   ├── layout.ts   ← station positions, slots, walking paths
-            │   ├── town.ts     ← island, buildings, crane, tower, radar, forge, pads, trees, clouds
+            │   ├── town.ts     ← island, buildings, crane, tower, radar, forge, pads, bank and vaults, trees, clouds
             │   ├── robot.ts    ← robot mesh and its procedural animations (RobotMesh)
             │   ├── particles.ts← sparks, smoke, water
+            │   ├── coins.ts    ← gold coins flying from the bank to a robot
             │   └── camera.ts   ← orthographic camera, pan/zoom/rotate, picking
             ├── agents/         ← turning activities into robot behaviour
             │   ├── source.ts   ← Source interface shared by live and demo
@@ -217,6 +255,7 @@ agent-village/
                 ├── format.ts   ← status, "now" line, log and feed texts
                 ├── hud.ts      ← counters, queue chips, live/demo switch, feed, camera buttons
                 ├── tags.ts     ← name tags, ! and ? bubbles, speech pops
+                ├── bank.ts     ← bank label, bank chip, bank card, vault levels
                 ├── panel.ts    ← robot panel (request, approve/deny, answer, log)
                 ├── dialog.ts   ← "New robot" dialog
                 ├── app.ts      ← what the UI modules need from main.ts
@@ -243,18 +282,21 @@ agent-village/
                                                └──────────────────────────────┘
 ----
 
-* *Claude Code* sends a JSON payload for each hook event to `POST /hooks`. The installer writes these hooks for you.
-* *The server* turns each payload into *activities* (see <<event-model>>), keeps a picture of every session in memory, and pushes changes to browsers over *Server-Sent Events*.
+* *Claude Code* sends a JSON payload for each hook event to `POST /hooks`, and its status line script sends the status line JSON to `POST /api/statusline`. The installer writes both for you. *GitHub Copilot* runs `scripts/copilot-hook.ts`, which posts to `POST /hooks/copilot`.
+* After some hooks the server reads the session's *transcript* (a file Claude Code writes in `~/.claude`) to count tokens. If you ran `pnpm copilot:setup`, it also asks the GitHub billing API every 10 minutes how many Copilot premium requests you used this month.
+* *The server* turns each payload into *activities* (see <<event-model>>), keeps a picture of every session and of the bank in memory, and pushes changes to browsers over *Server-Sent Events*.
 * *The town* builds robots from the snapshot it gets on connect, then animates each new activity. In *demo mode* a local script produces the same activities, so live and demo share one code path.
 
 [[event-model]]
 == Event model
 
-The contract is defined in `packages/shared/src/index.ts`.
+The contract is defined in `packages/shared/src/index.ts`. Protocol version *2* (`PROTOCOL_VERSION`): sessions carry `provider` instead of `agent`, the snapshot carries `bank`, and there are the messages `bank` and `session` and the activity `earned`.
 
 === Session
 
-One Claude Code session (`session_id`) = one robot. The server keeps for each session: `id`, robot `name` (from a fixed list: Atlas, Nova, Bolt, Iris, Pixel, Luna, …), `cwd` and `project` (last folder name), `model`, `status`, last `prompt`, `currentTool`, `pending` permission, `attentionText`, number of running `subagents`, `toolCount`, `lastMessage`.
+One agent session (`session_id`) = one robot. Copilot session ids get the prefix `copilot:`. The server keeps for each session: `id`, `provider` (`claude` or `copilot`, from the hook that created it), robot `name` (from a fixed list: Atlas, Nova, Bolt, Iris, Pixel, Luna, …), `cwd` and `project` (last folder name), `model` (id, e.g. `claude-opus-5-5`, from the transcript or status line), `modelName` (display name from the status line, e.g. "Opus 5.5"), `usage` (`TokenUsage`: `input`, `output`, `cacheWrite`, `cacheRead`; `totalTokens()` adds them up), `costUsd` (Claude Code's estimate), `contextPct` (0–100), `status`, last `prompt`, `currentTool`, `pending` permission, `attentionText`, number of running `subagents`, `toolCount`, `lastMessage`.
+
+The *bank* (`Bank`) has `claude` (`fiveHour` and `sevenDay` windows with `usedPct` 0–100 and `resetsAt` in epoch milliseconds, an optional `spend` limit, `updatedAt`) and `copilot` (`used`, `allowance`, `month` like `2026-10`, `updatedAt`, and `error` when the last check failed; `updatedAt: 0` means it never worked yet).
 
 `status` is one of: `idle` (turn finished, waiting for your next prompt), `thinking` (between steps), `working` (a tool is running), `waiting` (needs a permission), `asking` (asked you a question), `ended`.
 
@@ -277,13 +319,14 @@ One Claude Code session (`session_id`) = one robot. The server keeps for each se
 | `Stop` / `StopFailure` | idle | `stop` with the last assistant message: robot goes to charge once its queued steps are shown.
 | `SubagentStart` / `SubagentStop` | — | `subagent_start` / `subagent_stop`: counter on the robot.
 | `SessionEnd` | ended | `session_end`: robot walks back into the factory and disappears after 15 s.
+| ~1.5 s after `Stop` / `StopFailure` / `SessionEnd` | — | `earned` with `tokens` = tokens used since the previous `earned` (only when more than 0): coins fly from the bank to the robot. `PostToolUse` and `SubagentStop` also trigger a read, which only updates `usage`.
 |===
 
 Hooks fired inside a subagent carry `agent_id` and are attributed to the parent session's robot.
 
 === Messages on the stream
 
-`GET /events` sends `event: snapshot` once (all sessions + the last 200 activities), then `event: activity` (one activity plus the updated session) and `event: removed` (session gone). A comment line `: ping` keeps the connection alive every 20 s.
+`GET /events` sends `event: snapshot` once (all sessions, the last 200 activities and the bank), then `event: activity` (one activity plus the updated session), `event: session` (a session changed without an activity: tokens, model, cost, context), `event: bank` (the bank changed) and `event: removed` (session gone). `session` and `bank` are only sent when a value really changed (percent rounded to 0.1, dollars to 0.01), so a busy status line does not flood the stream. A comment line `: ping` keeps the connection alive every 20 s.
 
 == Server
 
@@ -294,7 +337,7 @@ node packages/server/src/index.ts [--port 4747] [--host 127.0.0.1] [--approvals 
 ----
 
 .Settings, from lowest to highest priority
-. `~/.agent-village/config.json` (created on first run; holds the `token`, and `port`, `approvals`, `approvalTimeoutSec` saved by `pnpm hooks:install`).
+. `~/.agent-village/config.json` (created on first run, file mode 600; holds the `token`, and `port`, `approvals`, `approvalTimeoutSec`, `wrappedStatusLine` saved by `pnpm hooks:install`, and `copilot` `{ username, githubToken, monthlyAllowance }` saved by `pnpm copilot:setup`).
 . Environment variables: `AGENT_VILLAGE_PORT`, `AGENT_VILLAGE_HOST`, `AGENT_VILLAGE_APPROVALS` (`1`/`0`), `AGENT_VILLAGE_APPROVAL_TIMEOUT`, `AGENT_VILLAGE_ALLOWED_HOSTS` (comma-separated extra Host names), `AGENT_VILLAGE_HOME` (moves the config folder; used by tests).
 . Command-line flags.
 
@@ -304,6 +347,8 @@ node packages/server/src/index.ts [--port 4747] [--host 127.0.0.1] [--approvals 
 | Method | Path | Auth | Purpose
 
 | POST | `/hooks` | token header | Receives every Claude Code hook. Answers `200` with an empty body, or a decision for `PermissionRequest`.
+| POST | `/hooks/copilot?event=<name>` | token header | Receives every GitHub Copilot hook (from `scripts/copilot-hook.ts`). Always answers `200` with an empty body at once.
+| POST | `/api/statusline` | token header | The JSON Claude Code passes to its status line. Updates the session (model, cost, context) and the Claude part of the bank. Answers `200` at once.
 | GET | `/events` | `?token=` | Server-Sent Events stream (snapshot, activities, removals).
 | GET | `/api/state` | `?token=` | Current snapshot as JSON.
 | POST | `/api/permissions/:id` | token header | Body `{"decision":"allow"\|"deny"}`. Answers a held `PermissionRequest`. `409` when it is no longer waiting.
@@ -311,7 +356,7 @@ node packages/server/src/index.ts [--port 4747] [--host 127.0.0.1] [--approvals 
 | GET | everything else | none | The built town from `packages/web/dist`, with the token injected into `index.html`.
 |===
 
-The token header is `X-Agent-Village-Token`.
+The token header is `X-Agent-Village-Token`. Copilot hooks go to `/hooks/copilot` with the event name in the query (see <<copilot>>). For forwarders installed before that route existed, `POST /hooks` with `X-Agent-Village-Agent: copilot` and `X-Agent-Village-Event` still works.
 
 [[security]]
 === Security model
@@ -324,6 +369,9 @@ The server can approve commands on your computer, so it is locked down:
 * `POST /api/permissions` also rejects foreign `Origin` headers.
 * The page is served with a strict Content Security Policy (`default-src 'self'`). Fonts are bundled; the town loads nothing from the internet.
 * Prompts, paths and commands stay in memory only and are never written to disk.
+* *Transcripts.* To count tokens the server reads Claude Code transcript files, read-only and only when the file ends in `.jsonl` and its real path (after resolving links) is inside the Claude config folder (`CLAUDE_CONFIG_DIR` or `~/.claude`). Any other path named in a hook is ignored. Only the four token counters and the model id are kept; nothing from a transcript is stored or sent to the browser.
+* *GitHub.* With `pnpm copilot:setup` the server makes one outbound HTTPS call to `api.github.com` (at start and every 10 minutes, 10 s timeout) with your GitHub token. Nothing else leaves the computer. The token is kept in `~/.agent-village/config.json` (file mode 600), never logged, never printed and never sent to the browser. Give it only the "Plan" user permission (read).
+* The status line script posts to the local server only (300 ms timeout) and never prints errors into Claude Code.
 
 WARNING: Do not expose the port to your network or the internet. To use a tablet on your home network, see <<roadmap>>; a safe way (for example Tailscale) is planned.
 
@@ -350,6 +398,21 @@ WARNING: Do not expose the port to your network or the internet. To use a tablet
 * A copy of the settings file is saved in `~/.agent-village/backups/` before every change.
 * Open Claude Code sessions load hooks at start. Restart them (or review hooks with `/hooks`) after installing.
 
+[[statusline]]
+=== The status line
+
+`pnpm hooks:install` also sets the status line in the same settings file (skip it with `--no-statusline`):
+
+[source,json]
+----
+{ "statusLine": { "type": "command", "command": "node \"<repo>/scripts/statusline.ts\"" } }
+----
+
+* Claude Code runs it after each answer and passes JSON on stdin. The script prints the status line first (default: `Opus · ctx 23% · 5h 38% · 7d 59%`), then posts the same JSON to `POST /api/statusline` (300 ms timeout). It never fails, hangs or prints errors.
+* Fields used (checked at https://code.claude.com/docs/en/statusline on 2026-10-20): `session_id`, `model.id`, `model.display_name`, `cost.total_cost_usd`, `context_window.used_percentage`, `rate_limits.five_hour` / `seven_day` / `spend_limit` with `used_percentage` (0–100) and `resets_at` (epoch seconds). `rate_limits` appear only on Pro and Max plans (or with a spend limit) and only after the first answer; every part may be missing.
+* *Your own status line is kept.* If the settings file already had one, it is saved as `wrappedStatusLine` in `~/.agent-village/config.json`; the script runs it with the same input (1 s timeout) and prints its output instead of the default line. `pnpm hooks:uninstall` puts it back. Ours is recognised by the path `scripts/statusline.ts`.
+* Claude Code picked up a newly installed status line in a running session in our test; if yours does not, restart the session.
+
 .How failures behave (from the Claude Code hooks documentation)
 * If the server is not running, the HTTP call fails and Claude Code continues normally (a non-blocking hook error).
 * An empty `200` body means "no decision": Claude Code continues with its usual behaviour.
@@ -357,14 +420,72 @@ WARNING: Do not expose the port to your network or the internet. To use a tablet
 
 NOTE: Field names were checked against the Claude Code hooks reference (https://code.claude.com/docs/en/hooks) on 2026-10-19. The exact deny fields and some per-event input fields (`notification_type`, `last_assistant_message`, `error`) are read defensively; verify them when Claude Code changes.
 
+[[copilot]]
+== GitHub Copilot
+
+GitHub Copilot has hooks too, in two places, and both read the same user file: `~/.copilot/hooks/*.json` (`%USERPROFILE%\.copilot\hooks\` on Windows; `COPILOT_HOME` moves it).
+
+* *Copilot CLI* (the `copilot` command line tool).
+* *VS Code agent mode* (Copilot Chat, "Local" sessions; hooks are a preview feature there, `chat.useHooks` is on by default).
+
+=== Hooks: Copilot robots
+
+`pnpm hooks:install` (or `pnpm hooks:install --copilot` for Copilot only) writes one file of its own there, `agent-village.json`, and `pnpm hooks:uninstall` (or `--copilot`) deletes it. Each Copilot event runs a command hook:
+
+[source,json]
+----
+{ "version": 1, "hooks": { "preToolUse": [ {
+  "type": "command", "timeoutSec": 5,
+  "bash": "node \"<repo>/scripts/copilot-hook.ts\" preToolUse 2>/dev/null || true",
+  "powershell": "& node '<repo>\\scripts\\copilot-hook.ts' preToolUse 2>$null; exit 0" } ] } }
+----
+
+* Events: `sessionStart`, `userPromptSubmitted`, `preToolUse`, `postToolUse`, `postToolUseFailure`, `notification`, `permissionRequest`, `agentStop`, `subagentStart`, `subagentStop`, `errorOccurred`, `sessionEnd`. VS Code fires only the ones it knows (no `notification`, `permissionRequest`, `errorOccurred` or `sessionEnd`).
+* `scripts/copilot-hook.ts` reads the payload from stdin, reads port and token from `~/.agent-village/config.json`, posts to `POST /hooks/copilot?event=<name>` (2 s timeout) and always exits `0` with no output. This matters: Copilot CLI treats a *failing* `preToolUse` command hook as "deny", so the village must never fail. The shells add a second guard (`|| true`, `exit 0`) in case Node or the script is missing. Measured on Windows: about 0.3 s per event when the town is off.
+* `packages/server/src/copilot.ts` turns both payload styles into the Claude Code shape: Copilot CLI's camelCase (`sessionId`, `toolName`, `toolArgs` as JSON text, `toolResult`, `error` as an object) and VS Code's snake_case (`session_id`, `tool_name`, `tool_input`). Event names: `userPromptSubmitted` → `UserPromptSubmit`, `agentStop` → `Stop`, `errorOccurred` → `StopFailure` (or a notification when `recoverable`), `notification_type: agent_idle` → `idle_prompt`.
+* Tool names are translated to their Claude Code equivalents (`TOOL_ALIASES` in `packages/shared/src/index.ts`), so stations, labels and verbs need one list: Copilot CLI `view` → `Read`, `edit`/`str_replace_editor`/`apply_patch` → `Edit`, `create` → `Write`, `bash`/`powershell` → forge, `grep`/`rg`/`glob`, `web_fetch`/`web_search`, `ask_user` → question, `task`; VS Code `read_file`, `list_dir`, `file_search`, `grep_search`, `replace_string_in_file`, `create_file`, `run_in_terminal`, `fetch_webpage`, `manage_todo_list`, `runSubagent`… Unknown tools go to the plaza.
+* Copilot robots use the same name pool, get session ids `copilot:<sessionId>`, a purple antenna bulb and a "Copilot" mark on the name tag.
+* *Watch only.* A `permissionRequest` (payload field `toolInput`) makes the robot wave with "!", and you answer in the terminal. The server answers every Copilot hook at once with an empty body and never holds it, even with approvals on (Copilot CLI's own answer format would be `{"behavior":"allow"|"deny"}`; VS Code has no such hook).
+* Why not `type: "http"`: Copilot allows plain `http://localhost` only with the environment variable `COPILOT_HOOK_ALLOW_LOCALHOST=1`, and *never* for `preToolUse` and `permissionRequest` (they must use `https://`), and VS Code runs only command hooks. With http hooks the robots would not see tool calls, so the command hook stays and *no environment variable is needed*.
+
+=== Model and tokens per Copilot robot
+
+Copilot hooks carry no model and no token usage. Copilot CLI keeps sessions in `~/.copilot/session-state/<id>/events.jsonl`, but that format is not documented and, according to the Copilot SDK documentation, the per-call usage event (`assistant.usage`) is not replayed from it. Copilot CLI is not installed on the author's PC (its `~/.copilot` holds only `config.json`, `hooks`, `ide` and `logs`), so this could not be checked. Until it is, Copilot robots show no model and "—" under *Earned* with the hint "Copilot does not report tokens per session". The town never invents numbers.
+
+[[copilot-vault]]
+=== The Copilot vault (premium requests)
+
+Copilot bills *premium requests*, not tokens. The right vault of the bank shows how many of this month's premium requests are left. It needs a GitHub token once:
+
+. *Create the token.* On GitHub open *Settings → Developer settings → Personal access tokens → Fine-grained tokens → Generate new token*. Give it a name (for example "Agent Village"), an expiry date, and under *Account permissions* set *Plan* to *Read-only*. Nothing else. Click *Generate token* and copy it.
+. *Save it in the town.* In the project folder run (your GitHub user name, and your plan's monthly premium requests: 300 for Copilot Pro, 1500 for Pro+):
++
+[source,shell]
+----
+pnpm copilot:setup --user <your-github-name> --allowance 300
+----
++
+Paste the token when asked; it is not shown while you paste. (Or set `AGENT_VILLAGE_GITHUB_TOKEN` before running the command.) The script checks the token with GitHub once and prints this month's usage.
+. *Restart the town* (`pnpm start`). The server asks GitHub at start and every 10 minutes. On an error it keeps the last value and the bank card shows a small warning.
+
+To disconnect: `pnpm copilot:setup --off` (deletes the token from the config file).
+
+* Endpoint (checked at https://docs.github.com/en/rest/billing/usage on 2026-10-20): `GET /users/{username}/settings/billing/premium_request/usage?year=YYYY&month=M`, header `X-GitHub-Api-Version: 2026-03-10`. The server adds up `grossQuantity` of the `usageItems` whose product or SKU is Copilot and whose unit is requests.
+* This endpoint covers Copilot plans you pay for yourself. If an organisation pays for your Copilot, GitHub answers 404 and the vault stays grey.
+
+NOTE: Checked against the Copilot CLI hooks reference (https://docs.github.com/en/copilot/reference/copilot-cli-reference/cli-hooks-reference, again on 2026-10-20) and the VS Code hooks reference (https://code.visualstudio.com/docs/agents/reference/hooks-reference) on 2026-10-19. Tested with payloads posted through `scripts/copilot-hook.ts` the way Copilot does; *not yet with a real Copilot session* (Copilot CLI is not installed on the author's PC). The billing API was tested with a mocked GitHub only. VS Code tool names are not listed in its documentation; the ones above are best known and should be checked in the VS Code agent debug log.
+
 == The town (web)
 
 * Vite + TypeScript + three.js 0.170, no UI framework. The town is drawn with toon materials and rounded shapes; robots are built from primitives in code (no model files). Fonts (Fredoka, Rubik, JetBrains Mono) come from `@fontsource` packages and are bundled, so nothing loads from the internet.
 * `world/` builds the scene once and knows nothing about agents. `agents/controller.ts` keeps one `Robot` per session; `agents/robot.ts` decides what each robot shows. `ui/` renders the HUD and panel with plain DOM.
 * *Pacing.* Real agents run tools in milliseconds, so each robot has a queue of *beats*. Consecutive steps at the same station merge into one visit. A beat lasts 1.7 s (1.2 s for thinking), down to 0.5 s when the queue grows; walking speeds up too. While a tool is still running (a long build, a long search), the robot keeps working at that station. After a tool, a robot that is still "thinking" walks to the fountain after a few seconds.
 * *Attention first.* A permission request or a question clears the robot's queue: it walks straight to the station of the tool in question and waves (! or ?). The bubble, counters and queue chips appear at once, even while it walks.
-* *Real data in the panel.* The panel's "Now" line, the request box and the log always show the real current state, not the animation.
+* *Real data in the panel.* The panel's "Now" line, the request box, the *Earned* section and the log always show the real current state, not the animation.
+* *Bank.* `world/town.ts` builds the bank at 10° on the outer ring (cream walls, gold-brown pediment, four columns, steps, a coin sign in front and a big coin turning on the roof) with the two glass vaults; `setVaults()` sets their fill and the coins move there smoothly. `world/coins.ts` flies the coins of an `earned` activity along an arc (~1.2 s) to wherever the robot is when they land. `ui/bank.ts` owns the label above the bank, the HUD chip (hidden on phones) and the bank card. Numbers use `Intl.NumberFormat` compact notation in the UI language ("18 tys." / "18K").
+* *Feed and queue chips.* Each line is short enough for its bar: shell commands show only their first command (`git add readme.adoc …`), paths only their last two folders, URLs only host and path (`shortTarget` in `ui/format.ts`). The full text is in the tooltip, and a click opens the robot's panel. Lines and chips are updated in place instead of being rebuilt, because live agents send several events per second and a rebuilt element would swallow the click.
 * *Live and demo.* On start the page reads the token from `<meta name="agent-village-token">` (the server fills it in) and calls `/api/health`. If both work, it connects to `/events`; otherwise it starts the demo and says so in the feed. The *Live / Demo* switch changes source at any time; `?demo` in the URL forces the demo. Both sources speak the same `ServerMessage` format (`agents/source.ts`).
+* *Demo bank.* Every demo Claude robot has a model (Opus, Sonnet, Haiku), uses 2k–30k tokens per step (mostly cache reads), has a cost and gets an `earned` at the end of each turn; the simulated 5-hour window slowly empties, and the Copilot vault starts at 212 of 300 (each Copilot turn adds one request). Copilot demo robots, like live ones, have no model and no tokens.
 * *What only the demo can do.* Answering questions, messages, *Stop* and *New robot* are simulated in the demo. Live, the panel shows the request and tells you to answer in the terminal, except permissions with approvals on (see <<hooks>>). Steering live agents is stage 3.
 * *Language.* English and Polish, chosen from the browser language and remembered in `localStorage`. Demo texts are stored in both languages, so switching also changes what is already on screen.
 * *Prototype.* `prototype/agent-village-prototype.html` is the original single-file version that defined the look. Keep it as a reference; do not develop it further.
@@ -383,6 +504,13 @@ NOTE: Field names were checked against the Claude Code hooks reference (https://
 | three.js without a framework | The prototype is plain three.js; porting it 1:1 keeps the approved look. React Three Fiber would add weight without benefit here.
 | Colour management off, light units scaled | Keeps the exact colours of the approved r128 prototype on current three.js: ambient, hemisphere and sun light ×π; point lights (lamps, forge) use decay 1 and ×2.8. Checked by rendering the prototype with r128 and the new town with r170 side by side, by day and by night: average colours differ by less than 3%.
 | Robots, English names, bilingual UI | Requested for a more professional presentation; Polish stays available.
+| Colour families per agent (warm Claude, cool Copilot) | The author wants to see at a glance which agent a robot comes from. One colour per agent would make robots of the same agent look identical, so each agent gets a family of shades.
+| Copilot through a command hook and the same `/hooks` endpoint | Copilot cannot post http hooks to localhost by default, and VS Code runs only command hooks. Translating Copilot payloads on the server into the Claude Code shape keeps one state machine and one town for every agent.
+| Copilot keeps the command hook, now posting to `/hooks/copilot?event=` | Copilot http hooks to localhost need `COPILOT_HOOK_ALLOW_LOCALHOST=1` and are not allowed at all for `preToolUse` and `permissionRequest`, so http hooks would hide every tool call. The forwarder needs no environment variable and also works in VS Code. A separate route with the event in the query keeps the Copilot path explicit.
+| Tokens from the transcript, not from hooks | Hooks carry no token usage. The transcript has `message.usage` for every API call. Reading it later (~1.5 s after the hook, incrementally) keeps hook answers instant. Each `message.id` is counted once because Claude Code writes one line per content block with the same usage.
+| Model, cost and limits from the status line | It is the only documented place where Claude Code shares `rate_limits`, the display name of the model and its own cost estimate. Wrapping an existing status line keeps the user's own line.
+| Copilot vault from the GitHub billing API | Copilot bills premium requests per month, not tokens; the billing API is the documented source. One outbound call every 10 minutes, token with the narrowest permission ("Plan": read).
+| Cache reads count as earned tokens | The robot "earns" every token its session used. Cache reads are usually the largest part; leaving them out would hide most of the work.
 |===
 
 [[status]]
@@ -397,6 +525,7 @@ This section is the hand-over point between work sessions. Keep it current.
 * Hook installer CLI (install, uninstall, status, backups, project mode, approvals flag), with tests.
 * Web town: the prototype ported into modules (`world/`, `agents/`, `ui/`), live source (SSE + approvals) and demo source on one code path, beat pacing, attention handling, panel with Allow/Deny, PL/EN, day/night, phone layout.
 * Lighting on three.js 0.170 matched to the r128 prototype (see <<decisions>>).
+* Feed and queue chips after the first real run: one short line per event (first command of a shell line, last folders of a path), full text in the tooltip, and a click opens the robot's panel even while events keep arriving.
 * Repository basics: workspace, scripts, TypeScript config, agent pointer files, this readme.
 
 .How the current version was checked (2026-10-19)
@@ -405,24 +534,36 @@ The first version was written in a sandbox without access to the npm registry, s
 * `node --test`: 27 tests pass. `tsc` passes for server, shared and web (web checked against the official three.js r170 type definitions).
 * The web town was bundled with esbuild (fonts stubbed) and served by the real server. Headless Chromium (software WebGL) ran it end to end: live mode with hooks posted like Claude Code does (two sessions, tools, a `PermissionRequest` approved in the panel, the hook received `allow`, stop, session end), demo mode (deny with fallback step, new robot, questions), PL/EN switch, dark theme and a 390 px phone screen. No errors in the console.
 
+.GitHub Copilot and robot colours (2026-10-19)
+* Sessions carry `agent` (`claude` / `copilot`); robots are coloured by agent family (see <<copilot>> and "Robot colours"). The demo has two Copilot robots.
+* Copilot CLI and VS Code agent mode hooks through `scripts/copilot-hook.ts`, translated in `packages/server/src/copilot.ts`, installed by `pnpm hooks:install`. Tests: 33 in total. Checked live with the forwarder against the running server (a simulated Copilot session appeared as a Copilot robot reading a file in the library).
+
+.Bank, earned tokens and models; Copilot vault (2026-10-20)
+* Stage A: protocol 2; tokens per robot from Claude Code transcripts (`usage.ts`), model, cost, context and Claude limits from the status line (`scripts/statusline.ts`, `POST /api/statusline`), installed and wrapped by `pnpm hooks:install`; the bank building with two glass vaults, coins, *Earned* in the panel, feed line, bank label, chip and card; demo bank.
+* Stage B: Copilot hooks on `POST /hooks/copilot?event=`, `copilot:` session ids, `permissionRequest` watched, purple bulb and "Copilot" mark; Copilot vault from the GitHub billing API (`pnpm copilot:setup`, polled every 10 minutes).
+* Tests: 44 in total (transcript reading, status line endpoint, status line install / restore, Copilot route and permission, premium-request parsing and error handling).
+* Checked live with this repository's own Claude Code session: the status line was picked up without a restart; the robot showed "Opus 5.5", its tokens (about 31 million, mostly cache reads), cost and context; a `Stop` produced an `earned` activity, coins flew from the bank and "+345 tys." popped up; the Claude vault showed the real 5-hour and weekly windows. Copilot was checked with simulated payloads through the forwarder only.
+
 === In progress
 
 * Nothing half-done.
 
 .First real run on Windows (2026-10-19)
 On the author's Windows 11 PC (Node 24, pnpm 10): `pnpm install`, `pnpm build` (Vite, `@fontsource` fonts), `pnpm typecheck`, `pnpm test` (27 pass) and `pnpm hooks:install` all worked without changes. `pnpm start` serves the town and receives real hooks from a running Claude Code session.
-Known glitch: the server's console log prints the `·` separator as `Â·` in Windows PowerShell (console code page).
+The server's console log printed the `·` separator as `Â·` in Windows PowerShell; the log now uses plain ASCII.
 
 === Next
 
 . Use it with a real Claude Code session; compare real hook payloads with the mapping in <<event-model>> (`notification_type`, `last_assistant_message`, `PermissionRequest` deny fields).
+. Try GitHub Copilot for real (Copilot CLI and VS Code agent mode): check the payloads and VS Code tool names against <<copilot>>, look at `~/.copilot/session-state/<id>/` for a model and token usage per session, and run `pnpm copilot:setup` against the real billing API.
+. Optional: Allow / Deny from the town for Copilot CLI through its `permissionRequest` hook.
 . Show subagents as small helper robots next to their parent.
 . Optional: sound when a robot starts waving.
 
 [[roadmap]]
 === Roadmap
 
-Stage 1 — Watch:: Robots appear per session and animate real tool use. _(done, waiting for the first real run)_
+Stage 1 — Watch:: Robots appear per session and animate real tool use. _(done, runs with real Claude Code sessions on Windows)_
 Stage 2 — Approve:: Allow/Deny from the town through `PermissionRequest`. _(done, experimental, behind `--approvals`)_
 Stage 3 — Launch and talk:: Start agents from the town ("New robot"), send messages and stop them, using the Claude Agent SDK on the server.
 Stage 4 — Polish:: A district per project, subagent robots, sounds for "!", history in SQLite, a desktop app (Tauri) with tray icon and always-on-top window, an `npx agent-village` package, safe tablet access on the home network.
@@ -445,16 +586,31 @@ The town is black or empty:: Your browser needs WebGL. Try Chrome, Edge, Firefox
 
 The town shows the demo although the server is running:: Open the town from the server itself (`http://localhost:4747`), not from a saved file or another port: only the server puts the token into the page. During development use `http://localhost:5173` after the server has run once (it creates `~/.agent-village/config.json`, which Vite reads). Then click *Live*.
 
+The bank is empty (grey Claude vault)::
+. Limits appear only on Claude *Pro* and *Max* plans, and only after the first answer of a session.
+. Is the status line installed? Run `pnpm hooks:status`. If it says "another one", run `pnpm hooks:install` again (your line keeps showing).
+. Restart Claude Code sessions after installing the status line if the numbers do not come.
+
+The Copilot vault is grey or shows a warning::
+. Not connected: run `pnpm copilot:setup --user <name>` and restart the town.
+. 401: the token expired or was revoked; make a new one. 403: the token needs the "Plan" permission (read). 404: wrong user name, or your Copilot is paid by an organisation (not supported yet).
+
+A Copilot robot shows "—" under Earned:: Expected: Copilot does not report tokens per session (see <<copilot>>).
+
 `pnpm setup` did something strange:: That is pnpm's own command for installing pnpm. The project's command is `pnpm first-run`.
 
 == Glossary
 
-Session:: One running Claude Code conversation. One session = one robot.
+Session:: One running Claude Code or GitHub Copilot conversation. One session = one robot.
 Hook:: A Claude Code setting that calls a command or URL when something happens (a tool runs, a prompt is sent…).
 Activity:: One event in the town's own format, made by the server from a hook.
 Station:: A place in the town where robots do one kind of work.
 Beat:: One step a robot shows on screen; several quick tool calls can merge into one beat.
 Approvals:: The optional mode in which the town answers Claude Code's permission questions.
+Bank:: The building that pays robots in coins for their tokens and shows, in two glass vaults, how much of the Claude and Copilot limits is left.
+Earned:: The tokens a robot's session used (input, output, cache write, cache read), from the Claude Code transcript. An `earned` activity pays out what was used since the previous one.
+Status line:: The line under the Claude Code prompt. Its command gets JSON with the model, cost and plan limits; Agent Village's script shows the line and forwards the JSON to the town.
+Premium request:: The unit GitHub Copilot bills by. Each plan includes a number per month (300 for Copilot Pro).
 
 == License
 

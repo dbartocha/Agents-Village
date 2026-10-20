@@ -2,14 +2,24 @@
  * Keeps one Robot per session and feeds it the messages from the active source (live server or demo).
  * Also tells the town which stations are busy and keeps the short event feed.
  */
-import type { Activity, ServerMessage, SessionInfo, Text } from '../../../shared/src/index.ts';
+import type { Activity, AgentKind, Bank, ServerMessage, SessionInfo, Text } from '../../../shared/src/index.ts';
 import type { Mesh } from 'three';
 import type { Busy, Town } from '../world/town';
+import { flyCoins } from '../world/coins';
 import { burst } from '../world/particles';
 import { Robot } from './robot';
 import type { PopKind } from './robot';
 
-export const COLORS = ['#ff6b5b', '#4d8dff', '#ffbf2e', '#9b6bff', '#2fbf8f', '#ff7eb6', '#38c6d9', '#ff9a3d', '#6f7cff', '#8fd14f', '#e85d75', '#b08968', '#00b3a4', '#c77dff'];
+/**
+ * Robot colours by agent family: warm for Claude Code, cool for GitHub Copilot.
+ * The first colour of each family is its signature colour (legend, panel badge).
+ */
+export const AGENT_COLORS: Record<AgentKind, string[]> = {
+  claude: ['#e8794a', '#ffbf2e', '#ff6b5b', '#ff9a3d', '#e85d75', '#b08968', '#ff7eb6'],
+  copilot: ['#4d8dff', '#9b6bff', '#38c6d9', '#6f7cff', '#2fbf8f', '#c77dff', '#00b3a4'],
+};
+
+export const agentOf = (s: SessionInfo): AgentKind => s.provider ?? 'claude';
 
 /** One line in the "recent events" feed. `key` is an i18n key for system lines. */
 export type FeedItem =
@@ -21,18 +31,23 @@ export interface VillageEvents {
   changed(robot?: Robot): void;
   feed(items: FeedItem[]): void;
   pop(robot: Robot, key: string, kind: PopKind): void;
+  /** The coins of an 'earned' activity reached the robot. */
+  paid(robot: Robot, tokens: number): void;
+  /** The bank changed (snapshot or a 'bank' message). */
+  bank(bank: Bank): void;
 }
 
 /** Activities worth a line in the feed (tool_done and friends would flood it). */
 const FEED_KINDS = new Set<Activity['kind']>([
-  'session_start', 'prompt', 'tool', 'tool_failed', 'permission', 'attention', 'permission_resolved', 'stop', 'session_end',
+  'session_start', 'prompt', 'tool', 'tool_failed', 'permission', 'attention', 'permission_resolved', 'stop', 'session_end', 'earned',
 ]);
 
 export class Village {
   readonly robots = new Map<string, Robot>();
   approvals = false;
+  bank: Bank = {};
   private feedItems: FeedItem[] = [];
-  private colorIdx = 0;
+  private readonly colorIdx: Record<AgentKind, number> = { claude: 0, copilot: 0 };
 
   private readonly town: Town;
   private readonly events: VillageEvents;
@@ -48,6 +63,8 @@ export class Village {
       case 'snapshot': {
         const snap = msg.snapshot;
         this.approvals = snap.approvals;
+        this.bank = snap.bank ?? {};
+        this.events.bank(this.bank);
         const ids = new Set(snap.sessions.map(s => s.id));
         for (const r of [...this.robots.values()]) if (!ids.has(r.id)) r.leave();
         for (const s of snap.sessions) {
@@ -72,12 +89,24 @@ export class Village {
           this.events.changed();
         }
         r.onActivity(a, s);
+        if (a.kind === 'earned' && a.tokens) this.payOut(r, a.tokens);
         if (FEED_KINDS.has(a.kind) && !(a.kind === 'attention' && a.attention === 'idle')) this.pushFeed({ kind: 'activity', robotId: r.id, a, fresh: true });
         this.events.changed(r);
         break;
       }
       case 'removed': {
         this.robots.get(msg.sessionId)?.leave();
+        break;
+      }
+      case 'bank': {
+        this.bank = msg.bank;
+        this.events.bank(this.bank);
+        break;
+      }
+      case 'session': {
+        // Tokens, model or cost changed; the robot's behaviour does not depend on these.
+        const r = this.robots.get(msg.session.id);
+        if (r) { r.session = msg.session; this.events.changed(r); }
         break;
       }
     }
@@ -125,8 +154,22 @@ export class Village {
     return busy;
   }
 
+  /** The bank pays the robot: 6–12 coins fly from the bank, then "+18K" pops over its head. */
+  private payOut(r: Robot, tokens: number): void {
+    const n = Math.round(Math.min(12, Math.max(6, (Math.log10(Math.max(10, tokens)) - 2) * 1.6 + 4)));
+    const alive = () => (this.robots.get(r.id) === r && !r.leaving ? { x: r.x, y: 1.1 * Math.max(0.3, r.scale), z: r.z } : null);
+    flyCoins(this.town.bankCoins, alive, n, () => {
+      if (!alive()) return;
+      burst(r.x, 1.3, r.z, '#ffc93d', 8, { speed: 1.6, up: 1.8, g: 6, life: 0.6, size: 0.05 });
+      r.cheer();
+      this.events.paid(r, tokens);
+    });
+  }
+
   private add(s: SessionInfo): Robot {
-    const color = COLORS[this.colorIdx++ % COLORS.length];
+    const agent = agentOf(s);
+    const palette = AGENT_COLORS[agent];
+    const color = palette[this.colorIdx[agent]++ % palette.length];
     const r = new Robot(s, color, {
       onBuild: n => this.town.grow(n),
       onGone: robot => {
@@ -144,7 +187,8 @@ export class Village {
     // Several tool calls in a row from the same robot collapse into one line.
     const top = this.feedItems[0];
     if (top && item.kind === 'activity' && top.kind === 'activity' && top.robotId === item.robotId && top.a.kind === 'tool' && item.a.kind === 'tool') {
-      this.feedItems[0] = item;
+      // Update the line in place (same object), so the page keeps the same element and clicks on it keep working.
+      top.a = item.a;
     } else {
       this.feedItems.unshift(item);
       this.feedItems = this.feedItems.slice(0, 4);

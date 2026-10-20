@@ -1,15 +1,22 @@
 /** Top and bottom bars: counters, the waiting queue, live/demo switch, legend, feed, camera buttons. */
 import type { FeedItem } from '../agents/controller';
+import type { Robot } from '../agents/robot';
 import type { SourceState } from '../agents/source';
-import { $, esc } from '../lib/util';
+import { $ } from '../lib/util';
 import type { App } from './app';
 import { L, lang, setLang, t } from './i18n';
-import { feedText } from './format';
+import { feedText, shortTarget } from './format';
+
+/** Sets text only when it changed, so elements under the mouse stay untouched. */
+function setText(el: HTMLElement, text: string): void { if (el.textContent !== text) el.textContent = text; }
 
 export class Hud {
   private feedItems: FeedItem[] = [];
   private readonly feedEl = $('#feed');
   private readonly queueEl = $('#queue');
+  /** Elements are kept per feed item and per waiting robot and updated in place: re-creating them on every event would swallow clicks. */
+  private readonly feedLis = new Map<FeedItem, HTMLLIElement>();
+  private readonly chips = new Map<string, HTMLButtonElement>();
 
   private readonly app: App;
 
@@ -39,29 +46,46 @@ export class Hud {
   render(): void {
     const robots = this.app.village.list().filter(r => !r.leaving);
     let work = 0, wait = 0, rest = 0;
-    this.queueEl.innerHTML = '';
+    const waiting: Robot[] = [];
     for (const r of robots) {
       const st = r.session.status;
-      if (st === 'waiting' || st === 'asking') {
-        wait++;
-        const ask = st === 'asking';
-        const b = document.createElement('button');
-        b.type = 'button';
-        b.className = 'qchip' + (ask ? ' ask' : '');
-        const what = ask ? t('qAsk') : L(r.session.pending?.target ?? r.session.attentionText ?? '');
-        b.innerHTML = `<span class="g">${ask ? '?' : '!'}</span><b>${esc(r.name)}</b><span>${esc(what)}</span>`;
-        b.addEventListener('click', () => this.app.select(r, true));
-        this.queueEl.appendChild(b);
-      } else if (st === 'idle') rest++;
+      if (st === 'waiting' || st === 'asking') { wait++; waiting.push(r); }
+      else if (st === 'idle') rest++;
       else work++;
     }
-    $('#sWork').textContent = String(work);
-    $('#sWait').textContent = String(wait);
-    $('#sDone').textContent = String(rest);
+    this.renderChips(waiting);
+    setText($('#sWork'), String(work));
+    setText($('#sWait'), String(wait));
+    setText($('#sDone'), String(rest));
     $('#sWaitBtn').classList.toggle('on', wait > 0);
     const s = this.app.state;
     $('#empty').hidden = !(this.app.source.kind === 'live' && s === 'live' && robots.length === 0);
     this.measureTop();
+  }
+
+  private renderChips(waiting: Robot[]): void {
+    const ids = new Set(waiting.map(r => r.id));
+    for (const [id, chip] of this.chips) if (!ids.has(id)) { chip.remove(); this.chips.delete(id); }
+    waiting.forEach((r, i) => {
+      let chip = this.chips.get(r.id);
+      if (!chip) {
+        chip = document.createElement('button');
+        chip.type = 'button';
+        chip.innerHTML = '<span class="g"></span><b></b><span class="q"></span>';
+        const id = r.id;
+        chip.addEventListener('click', () => { const robot = this.app.village.get(id); if (robot) this.app.select(robot, true); });
+        this.chips.set(r.id, chip);
+      }
+      const ask = r.session.status === 'asking';
+      const p = r.session.pending;
+      const full = ask ? L(r.session.attentionText) || t('qAsk') : L(p?.target ?? r.session.attentionText ?? '');
+      chip.className = 'qchip' + (ask ? ' ask' : '');
+      chip.title = full;
+      setText(chip.querySelector<HTMLElement>('.g')!, ask ? '?' : '!');
+      setText(chip.querySelector<HTMLElement>('b')!, r.name);
+      setText(chip.querySelector<HTMLElement>('.q')!, ask ? t('qAsk') : shortTarget(p?.tool, full, 30));
+      if (this.queueEl.children[i] !== chip) this.queueEl.insertBefore(chip, this.queueEl.children[i] ?? null);
+    });
   }
 
   setFeed(items: FeedItem[]): void {
@@ -69,19 +93,53 @@ export class Hud {
     this.renderFeed();
   }
 
+  /** Short one-line entries; the full text is in the tooltip and a click opens the robot's panel. */
   renderFeed(): void {
-    this.feedEl.innerHTML = '';
-    for (const it of this.feedItems) {
-      const li = document.createElement('li');
-      if (it.fresh) { li.className = 'fresh'; it.fresh = false; }
-      const r = it.kind === 'activity' ? this.app.village.get(it.robotId) : undefined;
-      const color = r ? r.color : 'var(--edge-dark)';
-      const who = it.kind === 'activity' ? (r?.name ?? '') : t('sysName');
-      const what = it.kind === 'activity' ? feedText(it.a, r?.f ?? false) : t(it.key);
-      li.innerHTML = `<button type="button"><i style="background:${esc(color)}"></i><span class="who">${esc(who)}</span><span class="what">${esc(what)}</span></button>`;
-      if (r) li.querySelector('button')!.addEventListener('click', () => this.app.select(r, true));
-      this.feedEl.appendChild(li);
+    const keep = new Set(this.feedItems);
+    for (const [it, li] of this.feedLis) if (!keep.has(it)) { li.remove(); this.feedLis.delete(it); }
+    let next: HTMLLIElement | null = null;
+    for (let i = this.feedItems.length - 1; i >= 0; i--) {
+      const it = this.feedItems[i];
+      let li = this.feedLis.get(it);
+      if (!li) {
+        li = this.createFeedLine(it);
+        this.feedLis.set(it, li);
+        this.feedEl.insertBefore(li, next);
+      }
+      this.fillFeedLine(li, it);
+      next = li;
     }
+  }
+
+  private createFeedLine(it: FeedItem): HTMLLIElement {
+    const li = document.createElement('li');
+    if (it.fresh) { li.className = 'fresh'; it.fresh = false; }
+    const b = document.createElement('button');
+    b.type = 'button';
+    b.innerHTML = '<i></i><span class="who"></span><span class="what"></span>';
+    if (it.kind === 'activity') {
+      const id = it.robotId;
+      b.addEventListener('click', () => { const r = this.app.village.get(id); if (r) this.app.select(r, true); });
+    } else {
+      b.classList.add('sys');
+      b.tabIndex = -1;
+    }
+    li.appendChild(b);
+    return li;
+  }
+
+  private fillFeedLine(li: HTMLLIElement, it: FeedItem): void {
+    const b = li.firstElementChild as HTMLButtonElement;
+    const r = it.kind === 'activity' ? this.app.village.get(it.robotId) : undefined;
+    const color = r ? r.color : 'var(--muted)';
+    const dot = b.querySelector<HTMLElement>('i')!;
+    if (dot.style.background !== color) dot.style.background = color;
+    setText(b.querySelector<HTMLElement>('.who')!, it.kind === 'activity' ? (r?.name ?? '') : t('sysName'));
+    const short = it.kind === 'activity' ? feedText(it.a, r?.f ?? false) : t(it.key);
+    const full = it.kind === 'activity' ? feedText(it.a, r?.f ?? false, false) : short;
+    setText(b.querySelector<HTMLElement>('.what')!, short);
+    const title = (r ? r.name + ' ' : '') + full;
+    if (b.title !== title) b.title = title;
   }
 
   /** Live/demo switch, connection dot and the legend note. */

@@ -3,7 +3,7 @@
  * wave, charge, cheer, shake). Ported from the prototype.
  */
 import * as THREE from 'three';
-import type { StationId } from '../../../shared/src/index.ts';
+import type { Provider, StationId } from '../../../shared/src/index.ts';
 import { ease } from '../lib/util';
 import { basic, box, cyl, roundedBox, scene, sph, toon } from './kit';
 import { burst } from './particles';
@@ -59,6 +59,9 @@ const BULB = {
 };
 const tmpC = new THREE.Color();
 
+/** Per-provider touches on the robot. Copilot robots have a purple antenna bulb when nothing else lights it. */
+const PROVIDER_BULB: Record<Provider, string | null> = { claude: null, copilot: '#8b5cf6' };
+
 export class RobotMesh {
   readonly group = new THREE.Group();
   /** Meshes used for click picking; each carries userData.robotId. */
@@ -85,10 +88,13 @@ export class RobotMesh {
 
   readonly robotId: string;
   readonly color: string;
+  /** Antenna bulb colour while it is not signalling anything. */
+  private readonly bulbIdle: string;
 
-  constructor(robotId: string, color: string) {
+  constructor(robotId: string, color: string, provider: Provider = 'claude') {
     this.robotId = robotId;
     this.color = color;
+    this.bulbIdle = PROVIDER_BULB[provider] ?? color;
     const g = this.group, root = this.root;
     g.add(root);
     const M = (geo: THREE.BufferGeometry, mat: THREE.Material, parent: THREE.Object3D, x = 0, y = 0, z = 0) => {
@@ -124,7 +130,7 @@ export class RobotMesh {
     this.ant.position.set(0, 0.46, 0);
     this.head.add(this.ant);
     M(RG.stick, MAT.limb, this.ant, 0, 0.1, 0);
-    this.bulbM = new THREE.MeshBasicMaterial({ color });
+    this.bulbM = new THREE.MeshBasicMaterial({ color: this.bulbIdle });
     M(RG.bulb, this.bulbM, this.ant, 0, 0.22, 0);
     // props
     this.hammer.position.set(0, -0.3, 0);
@@ -260,7 +266,7 @@ export class RobotMesh {
     this.eyeL.position.y = this.eyeR.position.y = 0.245 + eyeOffY;
 
     if (bulb) { tmpC.copy(BULB.off).lerp(bulb, pulse); this.bulbM.color.copy(tmpC); }
-    else this.bulbM.color.set(this.color);
+    else this.bulbM.color.set(this.bulbIdle);
     this.dotM.color.set(Math.sin(tt * 3) > 0 ? 0xff6b6b : 0x5a2b2b);
     this.dot2.color.set(Math.sin(tt * 2.3 + 1) > 0 ? 0x5dffa0 : 0x1f4a33);
 

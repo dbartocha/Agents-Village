@@ -19,7 +19,8 @@
     "check": "pnpm test && pnpm typecheck && pnpm build",
     "hooks:install": "node scripts/hooks.ts install",
     "hooks:uninstall": "node scripts/hooks.ts uninstall",
-    "hooks:status": "node scripts/hooks.ts status"
+    "hooks:status": "node scripts/hooks.ts status",
+    "copilot:setup": "node scripts/copilot-setup.ts"
   },
   "devDependencies": {
     "@types/node": "^22.10.0",

@@ -1,5 +1,5 @@
 import { randomBytes } from 'node:crypto';
-import { existsSync, mkdirSync, readFileSync, writeFileSync } from 'node:fs';
+import { chmodSync, existsSync, mkdirSync, readFileSync, writeFileSync } from 'node:fs';
 import { homedir } from 'node:os';
 import { join } from 'node:path';
 
@@ -25,6 +25,10 @@ export interface StoredConfig {
   port?: number;
   approvals?: boolean;
   approvalTimeoutSec?: number;
+  /** The status line the user had before `pnpm hooks:install`; scripts/statusline.ts runs it and uninstall restores it. */
+  wrappedStatusLine?: { type?: string; command?: string; [k: string]: unknown };
+  /** GitHub account for the Copilot vault, saved by `pnpm copilot:setup`. The token never leaves this computer except to api.github.com. */
+  copilot?: { username?: string; githubToken?: string; monthlyAllowance?: number };
 }
 
 export function configDir(env: NodeJS.ProcessEnv = process.env): string {
@@ -49,6 +53,8 @@ export function loadStoredConfig(env: NodeJS.ProcessEnv = process.env): StoredCo
 export function saveStoredConfig(next: StoredConfig, env: NodeJS.ProcessEnv = process.env): void {
   mkdirSync(configDir(env), { recursive: true });
   writeFileSync(configFile(env), JSON.stringify(next, null, 2) + '\n', { encoding: 'utf8', mode: 0o600 });
+  // The file holds the village token and maybe a GitHub token: keep it private even if it existed before.
+  try { chmodSync(configFile(env), 0o600); } catch { /* not supported on every file system */ }
 }
 
 /** Returns the shared secret used by hooks and the web page, creating it on first use. */

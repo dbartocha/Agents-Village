@@ -56,6 +56,8 @@ export const STATIONS: Record<StationId, Station> = {
   plaza: station('plaza', 0, 0),
 };
 export const FACTORY = { phi: 105, bR: 10.9, entry: pol(ENTRY_R, 105), door: pol(9.35, 105), center: pol(10.9, 105) };
+/** The bank stands between the library (345°) and the charging pads (45°). It is not a work station. */
+export const BANK = { phi: 10, bR: 11.4, entry: pol(ENTRY_R, 10), center: pol(11.4, 10) };
 
 {
   const S = STATIONS;

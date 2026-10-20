@@ -2,9 +2,9 @@
  * Demo source: six simulated agents (the scenes from the prototype) that produce the same
  * activities as real Claude Code sessions. Used when no server is running, or on request.
  */
-import { ROBOT_NAMES, stationForTool } from '../../../shared/src/index.ts';
+import { PROTOCOL_VERSION, ROBOT_NAMES, stationForTool, totalTokens } from '../../../shared/src/index.ts';
 import type {
-  Activity, ActivityKind, Decision, Localized, PendingPermission, SessionInfo, Snapshot, Text,
+  Activity, ActivityKind, AgentKind, Bank, Decision, Localized, PendingPermission, SessionInfo, Snapshot, Text,
 } from '../../../shared/src/index.ts';
 import { pick, rint, rnd } from '../lib/util';
 import { tBoth } from '../ui/i18n';
@@ -24,13 +24,21 @@ interface Step {
   granted?: boolean;
 }
 
-interface Template { name: string; f: boolean; task: Localized; steps: Step[] }
+interface Template { name: string; f: boolean; agent?: AgentKind; model?: DemoModel; task: Localized; steps: Step[] }
+
+/** Demo models: display name, id and a rough price per token (mostly cache reads) for the cost estimate. */
+type DemoModel = 'Opus' | 'Sonnet' | 'Haiku';
+const MODELS: Record<DemoModel, { id: string; usdPerToken: number }> = {
+  Opus: { id: 'claude-opus-5-5', usdPerToken: 4e-6 },
+  Sonnet: { id: 'claude-sonnet-5-5', usdPerToken: 2.4e-6 },
+  Haiku: { id: 'claude-haiku-4-5', usdPerToken: 0.8e-6 },
+};
 
 const DUR: Record<string, number> = { Read: 4, Grep: 3.2, Glob: 3, Edit: 5.5, Write: 6.5, Bash: 5, WebSearch: 5.5, WebFetch: 4.5 };
 const MAX_ROBOTS = 14;
 
 const TEMPLATES: Template[] = [
-  { name: 'Atlas', f: false, task: B('Przenieś logowanie na nowe sesje i usuń stare tokeny JWT.', 'Move login to the new sessions and remove the old JWT tokens.'), steps: [
+  { name: 'Atlas', f: false, model: 'Opus', task: B('Przenieś logowanie na nowe sesje i usuń stare tokeny JWT.', 'Move login to the new sessions and remove the old JWT tokens.'), steps: [
     { tool: 'Grep', target: 'getSessionToken', result: B('14 wystąpień w 6 plikach', '14 matches in 6 files') },
     { tool: 'Read', target: 'src/auth/session.ts' },
     { tool: 'Read', target: 'src/auth/middleware.ts' },
@@ -42,7 +50,7 @@ const TEMPLATES: Template[] = [
     { tool: 'Bash', target: 'npm test -- auth', result: B('Wszystkie 42 testy przechodzą', 'All 42 tests passing') },
     { tool: 'Bash', target: 'git push origin feat/sessions', perm: { title: B('Chce wypchnąć zmiany na zdalne repozytorium.', 'Wants to push changes to the remote repository.'), why: B('Gałąź feat/sessions trafi na GitHuba i uruchomi CI.', 'The feat/sessions branch will go to GitHub and trigger CI.') }, result: B('Wypchnięto 3 commity', 'Pushed 3 commits') },
   ] },
-  { name: 'Nova', f: true, task: B('Napisz testy e2e dla rejestracji i resetu hasła.', 'Write e2e tests for sign-up and password reset.'), steps: [
+  { name: 'Nova', f: true, agent: 'copilot', task: B('Napisz testy e2e dla rejestracji i resetu hasła.', 'Write e2e tests for sign-up and password reset.'), steps: [
     { tool: 'Read', target: 'playwright.config.ts' },
     { tool: 'Read', target: 'src/pages/register.tsx' },
     { tool: 'Read', target: 'src/pages/reset-password.tsx' },
@@ -52,14 +60,14 @@ const TEMPLATES: Template[] = [
     { tool: 'Write', target: 'tests/e2e/reset-password.spec.ts', diff: '+58' },
     { tool: 'Bash', target: 'npx playwright test reset-password', result: B('4 z 4 testów przechodzi', '4 of 4 tests passing') },
   ] },
-  { name: 'Bolt', f: false, task: B('Dodaj numer telefonu do profilu użytkownika, razem z migracją bazy.', 'Add a phone number to the user profile, including a database migration.'), steps: [
+  { name: 'Bolt', f: false, model: 'Sonnet', task: B('Dodaj numer telefonu do profilu użytkownika, razem z migracją bazy.', 'Add a phone number to the user profile, including a database migration.'), steps: [
     { tool: 'Read', target: 'prisma/schema.prisma' },
     { tool: 'Edit', target: 'prisma/schema.prisma', diff: '+2' },
     { tool: 'Bash', target: 'npx prisma migrate dev --name add_phone', perm: { title: B('Chce uruchomić migrację bazy danych.', 'Wants to run a database migration.'), why: B('Zmieni schemat Twojej lokalnej bazy: tabela users dostanie kolumnę phone.', 'Changes your local database schema: the users table gets a phone column.') }, alt: { tool: 'Bash', target: 'npx prisma migrate dev --create-only', result: B('Przygotowano plik migracji bez uruchamiania', 'Migration file prepared without applying it') }, result: B('Migracja add_phone zastosowana', 'Migration add_phone applied') },
     { tool: 'Edit', target: 'src/api/users.ts', diff: '+16 −2' },
     { tool: 'Bash', target: 'npm run typecheck', result: B('Bez błędów', 'No errors') },
   ] },
-  { name: 'Iris', f: true, task: B('Uzupełnij dokumentację API dla endpointów /orders.', 'Complete the API docs for the /orders endpoints.'), steps: [
+  { name: 'Iris', f: true, model: 'Haiku', task: B('Uzupełnij dokumentację API dla endpointów /orders.', 'Complete the API docs for the /orders endpoints.'), steps: [
     { tool: 'Glob', target: 'src/api/orders/**/*.ts', result: B('7 plików', '7 files') },
     { tool: 'Read', target: 'src/api/orders/create.ts' },
     { tool: 'WebSearch', target: B('OpenAPI 3.1 przykłady odpowiedzi z błędami', 'OpenAPI 3.1 error response examples') },
@@ -67,14 +75,14 @@ const TEMPLATES: Template[] = [
     { tool: 'Write', target: 'docs/api/orders.md', diff: '+212' },
     { tool: 'Edit', target: 'docs/api/README.md', diff: '+3' },
   ] },
-  { name: 'Pixel', f: false, task: B('Napraw błąd #412: koszyk gubi produkty po odświeżeniu strony.', 'Fix bug #412: the cart loses items after a page refresh.'), steps: [
+  { name: 'Pixel', f: false, agent: 'copilot', task: B('Napraw błąd #412: koszyk gubi produkty po odświeżeniu strony.', 'Fix bug #412: the cart loses items after a page refresh.'), steps: [
     { tool: 'Read', target: 'src/cart/store.ts' },
     { tool: 'Grep', target: 'localStorage', result: B('2 wystąpienia', '2 matches') },
     { tool: 'Edit', target: 'src/cart/store.ts', diff: '+11 −3' },
     { tool: 'Write', target: 'tests/cart/persist.test.ts', diff: '+40' },
     { tool: 'Bash', target: 'npx vitest run cart', result: B('8 z 8 testów przechodzi', '8 of 8 tests passing') },
   ] },
-  { name: 'Luna', f: true, task: B('Przygotuj stronę cennika z trzema pakietami.', 'Build a pricing page with three plans.'), steps: [
+  { name: 'Luna', f: true, model: 'Sonnet', task: B('Przygotuj stronę cennika z trzema pakietami.', 'Build a pricing page with three plans.'), steps: [
     { tool: 'WebSearch', target: B('dostępny przełącznik miesięcznie / rocznie', 'accessible monthly / yearly toggle') },
     { tool: 'Read', target: 'src/components/Card.tsx' },
     { tool: 'Ask', ask: { q: B('Środkowy pakiet ma być wyróżniony jako polecany?', 'Should the middle plan be highlighted as recommended?'), options: [B('Tak, wyróżnij', 'Yes, highlight it'), B('Nie, wszystkie równo', 'No, keep them equal')] }, answer: B('Tak, wyróżnij', 'Yes, highlight it') },
@@ -142,6 +150,8 @@ interface DemoAgent {
   state: AgentState;
   timer: number;
   later: { t: number; fn: () => void } | null;
+  /** Tokens already paid out by the bank ('earned'). */
+  earnedBase: number;
 }
 
 export class DemoSource implements Source {
@@ -154,6 +164,8 @@ export class DemoSource implements Source {
   private perms = 0;
   private interval: ReturnType<typeof setInterval> | null = null;
   private last = 0;
+  /** Simulated bank: the 5-hour window slowly empties, Copilot sits at 212 of 300 premium requests. */
+  private bank: Bank = {};
 
   constructor() {
     const self = this;
@@ -178,7 +190,7 @@ export class DemoSource implements Source {
     this.buffer = [];
     const seeded: Array<{ id: string; text: Text; at: number }> = [];
     const seed = (tp: Template, si: number, setup: (a: DemoAgent) => void) => {
-      const a = this.create(tp.name, tp.f, tp.task, tp.steps.map(x => ({ ...x })));
+      const a = this.create(tp.name, tp.f, tp.task, tp.steps.map(x => ({ ...x })), tp.agent, tp.model);
       let at = now - 90_000 + rint(0, 20_000);
       recent.push(this.act(a, 'session_start', {}, at));
       recent.push(this.act(a, 'prompt', { text: tp.task }, (at += 2000)));
@@ -189,9 +201,12 @@ export class DemoSource implements Source {
         recent.push(this.act(a, 'tool', { tool, target: st.ask ? st.ask.q : st.target, station: stationForTool(tool) }, (at += 5000)));
         if (st.ask) seeded.push({ id: a.s.id, text: st.answer ?? st.ask.options[0], at: at + 2000 });
         if (st.perm) recent.push(this.act(a, 'permission_resolved', { resolution: 'allow' }, (at += 1500)));
+        this.spend(a);
         recent.push(this.act(a, 'tool_done', { tool, text: st.result }, (at += 3000)));
         a.s.toolCount += 1;
       }
+      // Earlier turns were paid out already.
+      a.earnedBase = totalTokens(a.s.usage);
       a.si = si;
       setup(a);
     };
@@ -209,10 +224,20 @@ export class DemoSource implements Source {
     recent.push(...this.buffer);
     this.buffer = [];
     recent.sort((x, y) => x.at - y.at);
+    const month = new Date().toISOString().slice(0, 7);
+    this.bank = {
+      claude: {
+        fiveHour: { usedPct: 38, resetsAt: now + 2.3 * 3600_000 },
+        sevenDay: { usedPct: 59, resetsAt: now + 3.4 * 86_400_000 },
+        updatedAt: now,
+      },
+      copilot: { used: 212, allowance: 300, month, updatedAt: now },
+    };
     const snapshot: Snapshot = {
-      protocol: 1, version: 'demo', approvals: true,
+      protocol: PROTOCOL_VERSION, version: 'demo', approvals: true,
       sessions: [...this.agents.values()].map(a => structuredClone(a.s)),
       recent,
+      bank: structuredClone(this.bank),
     };
     sink.message({ type: 'snapshot', snapshot });
     for (const x of seeded) sink.say(x.id, 'you', x.text, x.at, true);
@@ -285,14 +310,23 @@ export class DemoSource implements Source {
 
   private stepDur(st: Step): number { return (DUR[st.tool] ?? 4) * rnd(0.85, 1.2); }
 
-  private create(name: string, f: boolean, task: Text, steps: Step[]): DemoAgent {
+  private create(name: string, f: boolean, task: Text, steps: Step[], agent: AgentKind = 'claude', model?: DemoModel): DemoAgent {
     const id = `demo-${++this.ids}`;
     const now = Date.now();
     const s: SessionInfo = {
-      id, name, f, cwd: '~/projects/shop', project: 'shop', model: 'claude-demo', status: 'idle',
+      id, provider: agent, name, f, cwd: '~/projects/shop', project: 'shop', status: 'idle',
       startedAt: now, updatedAt: now, prompt: task, subagents: 0, toolCount: 0,
     };
-    const a: DemoAgent = { s, steps, si: 0, state: 'idle', timer: 0, later: null };
+    // Like live: Copilot reports no model and no tokens per session.
+    if (agent === 'claude') {
+      const m = model ?? pick(['Opus', 'Sonnet', 'Haiku'] as const);
+      s.modelName = m;
+      s.model = MODELS[m].id;
+      s.usage = { input: 0, output: 0, cacheWrite: 0, cacheRead: 0 };
+      s.costUsd = 0;
+      s.contextPct = rnd(4, 9);
+    }
+    const a: DemoAgent = { s, steps, si: 0, state: 'idle', timer: 0, later: null, earnedBase: 0 };
     this.agents.set(id, a);
     return a;
   }
@@ -352,8 +386,24 @@ export class DemoSource implements Source {
     this.emit(a, 'tool', { tool: st.tool, target: st.target, station });
   }
 
+  /** One step uses 2k–30k tokens, mostly cache reads, like a real agent. */
+  private spend(a: DemoAgent): void {
+    const u = a.s.usage;
+    if (!u) return;
+    const n = rint(2000, 30000);
+    const read = Math.round(n * rnd(0.6, 0.8)), write = Math.round(n * rnd(0.08, 0.18)), out = Math.round(n * rnd(0.05, 0.12));
+    u.cacheRead += read;
+    u.cacheWrite += write;
+    u.output += out;
+    u.input += Math.max(0, n - read - write - out);
+    const m = MODELS[(a.s.modelName as DemoModel) ?? 'Sonnet'] ?? MODELS.Sonnet;
+    a.s.costUsd = Math.round(((a.s.costUsd ?? 0) + n * m.usdPerToken) * 100) / 100;
+    a.s.contextPct = Math.min(92, Math.round(((a.s.contextPct ?? 5) + n / 4000) * 10) / 10);
+  }
+
   private completeStep(a: DemoAgent): void {
     const st = a.steps[a.si];
+    this.spend(a);
     a.s.status = 'thinking';
     a.s.currentTool = undefined;
     a.state = 'pause';
@@ -370,6 +420,35 @@ export class DemoSource implements Source {
     const text = tBoth('demoDone', { task: a.s.prompt });
     a.s.lastMessage = text;
     this.emit(a, 'stop', { text });
+    this.payOut(a);
+  }
+
+  /** End of a turn: the bank pays the robot and the simulated limits move. */
+  private payOut(a: DemoAgent): void {
+    const b = this.bank;
+    if (a.s.provider === 'copilot') {
+      if (b.copilot) { b.copilot = { ...b.copilot, used: Math.min(b.copilot.allowance ?? 300, b.copilot.used + 1), updatedAt: Date.now() }; this.sendBank(); }
+      return;
+    }
+    const total = totalTokens(a.s.usage);
+    const delta = total - a.earnedBase;
+    a.earnedBase = total;
+    if (delta <= 0) return;
+    setTimeout(() => {
+      if (!this.live || this.agents.get(a.s.id) !== a) return;
+      this.emit(a, 'earned', { tokens: delta });
+      const c = b.claude;
+      if (c?.fiveHour && c.sevenDay) {
+        c.fiveHour = { ...c.fiveHour, usedPct: Math.min(97, Math.round((c.fiveHour.usedPct + delta / 25_000) * 10) / 10) };
+        c.sevenDay = { ...c.sevenDay, usedPct: Math.min(97, Math.round((c.sevenDay.usedPct + delta / 120_000) * 10) / 10) };
+        c.updatedAt = Date.now();
+        this.sendBank();
+      }
+    }, 800);
+  }
+
+  private sendBank(): void {
+    if (this.live) this.sink?.message({ type: 'bank', bank: structuredClone(this.bank) });
   }
 
   /* ---------- controls ---------- */
@@ -409,6 +488,7 @@ export class DemoSource implements Source {
     a.s.currentTool = undefined;
     a.s.attentionText = undefined;
     this.emit(a, 'stop', {});
+    this.payOut(a);
   }
 
   private giveTask(id: string, task: string): void {

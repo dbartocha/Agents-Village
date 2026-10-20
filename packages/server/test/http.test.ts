@@ -112,3 +112,80 @@ test('the built town gets the token injected; a missing build shows instructions
   assert.match(await res.text(), new RegExp(TOKEN));
   assert.match(res.headers.get('content-security-policy') ?? '', /default-src 'self'/);
 });
+
+test('Copilot hooks are recognised by the agent header', async () => {
+  const { base, state } = await start();
+  const res = await fetch(`${base}/hooks`, {
+    method: 'POST',
+    headers: { 'content-type': 'application/json', 'x-agent-village-token': TOKEN, 'x-agent-village-agent': 'copilot', 'x-agent-village-event': 'sessionStart' },
+    body: JSON.stringify({ sessionId: 'cop-1', cwd: '/home/me/api', source: 'new' }),
+  });
+  assert.equal(res.status, 200);
+  assert.equal(state.sessions.get('copilot:cop-1')?.provider, 'copilot');
+  await hook(base, { hook_event_name: 'SessionStart', session_id: 'cl-1' });
+  assert.equal(state.sessions.get('cl-1')?.provider, 'claude');
+});
+
+test('Copilot hooks on /hooks/copilot need the token and take the event from the query', async () => {
+  const { base, state } = await start();
+  const post = (token: string) => fetch(`${base}/hooks/copilot?event=preToolUse`, {
+    method: 'POST', headers: { 'content-type': 'application/json', 'x-agent-village-token': token },
+    body: JSON.stringify({ sessionId: 'abc', cwd: '/w/api', toolName: 'bash', toolArgs: '{"command":"npm test"}' }),
+  });
+  assert.equal((await post('wrong')).status, 401);
+  assert.equal(state.sessions.size, 0);
+  const res = await post(TOKEN);
+  assert.equal(res.status, 200);
+  assert.equal(await res.text(), '');
+  const s = state.sessions.get('copilot:abc');
+  assert.equal(s?.provider, 'copilot');
+  assert.equal(s?.currentTool?.station, 'forge');
+});
+
+test('a Copilot permission request is never held, even with approvals on', async () => {
+  const { base, state } = await start({ approvals: true });
+  const res = await fetch(`${base}/hooks/copilot?event=permissionRequest`, {
+    method: 'POST', headers: { 'content-type': 'application/json', 'x-agent-village-token': TOKEN },
+    body: JSON.stringify({ sessionId: 'p1', toolName: 'bash', toolInput: { command: 'rm -rf dist' } }),
+  });
+  assert.equal(await res.text(), '');
+  const s = state.sessions.get('copilot:p1');
+  assert.equal(s?.status, 'waiting');
+  assert.equal(s?.pending?.approvable, false);
+});
+
+test('the status line updates the session and the bank, and unchanged values are not sent again', async () => {
+  const { base, state } = await start();
+  await hook(base, { hook_event_name: 'SessionStart', session_id: 'st1' });
+  const sent: string[] = [];
+  state.subscribe(m => { sent.push(m.type); });
+  const line = {
+    session_id: 'st1', model: { id: 'claude-opus-5-5', display_name: 'Opus' }, cost: { total_cost_usd: 3.4012 },
+    context_window: { used_percentage: 23.04 },
+    rate_limits: { five_hour: { used_percentage: 38, resets_at: 1792440000 }, seven_day: { used_percentage: 59.02, resets_at: 1792900000 } },
+  };
+  const post = (body: unknown, token = TOKEN) => fetch(`${base}/api/statusline`, {
+    method: 'POST', headers: { 'content-type': 'application/json', 'x-agent-village-token': token }, body: JSON.stringify(body),
+  });
+  assert.equal((await post(line, 'nope')).status, 401);
+  assert.equal(sent.length, 0);
+  assert.equal((await post(line)).status, 200);
+  const s = state.sessions.get('st1');
+  assert.equal(s?.modelName, 'Opus');
+  assert.equal(s?.costUsd, 3.4);
+  assert.equal(s?.contextPct, 23);
+  assert.equal(state.bank.claude?.fiveHour?.usedPct, 38);
+  assert.equal(state.bank.claude?.fiveHour?.resetsAt, 1792440000 * 1000);
+  assert.equal(state.bank.claude?.sevenDay?.usedPct, 59);
+  assert.deepEqual(sent, ['session', 'bank']);
+  // Same values after rounding (0.1 % and $0.01): nothing is broadcast.
+  await post({ ...line, cost: { total_cost_usd: 3.4033 }, context_window: { used_percentage: 23.01 } });
+  assert.deepEqual(sent, ['session', 'bank']);
+  // A payload without rate limits keeps the bank.
+  await post({ session_id: 'st1', cost: { total_cost_usd: 3.6 } });
+  assert.deepEqual(sent, ['session', 'bank', 'session']);
+  assert.equal(state.bank.claude?.fiveHour?.usedPct, 38);
+  const snap = await (await fetch(`${base}/api/state?token=${TOKEN}`)).json();
+  assert.equal(snap.protocol, 2);
+  assert.equal(snap.bank.claude.sevenDay.usedPct, 59);
+});

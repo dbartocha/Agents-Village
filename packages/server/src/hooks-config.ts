@@ -57,3 +57,71 @@ export function installedEvents(settings: Settings): string[] {
     .filter(([, groups]) => Array.isArray(groups) && groups.some(g => Array.isArray(g.hooks) && g.hooks.some(isVillageHook)))
     .map(([event]) => event);
 }
+
+/**
+ * GitHub Copilot (Copilot CLI and VS Code agent mode) reads command hooks from ~/.copilot/hooks/*.json.
+ * The village owns one whole file there, so uninstall simply deletes it.
+ */
+export const COPILOT_EVENTS = [
+  'sessionStart', 'userPromptSubmitted', 'preToolUse', 'postToolUse', 'postToolUseFailure',
+  'notification', 'permissionRequest', 'agentStop', 'subagentStart', 'subagentStop', 'errorOccurred', 'sessionEnd',
+] as const;
+export const COPILOT_HOOKS_FILE = 'agent-village.json';
+
+interface CommandHook { type: 'command'; bash: string; powershell: string; timeoutSec: number }
+export interface CopilotHooksFile { version: 1; hooks: Record<string, CommandHook[]> }
+
+/**
+ * Builds the Copilot hooks file that runs scripts/copilot-hook.ts for every event.
+ * Both shells swallow errors and exit 0: Copilot denies the tool when a preToolUse hook fails.
+ */
+export function copilotHooks(scriptPath: string): CopilotHooksFile {
+  const posix = scriptPath.replace(/\\/g, '/');
+  const win = scriptPath.replace(/'/g, "''");
+  const hooks: Record<string, CommandHook[]> = {};
+  for (const event of COPILOT_EVENTS) {
+    hooks[event] = [{
+      type: 'command',
+      bash: `node "${posix}" ${event} 2>/dev/null || true`,
+      powershell: `& node '${win}' ${event} 2>$null; exit 0`,
+      timeoutSec: 5,
+    }];
+  }
+  return { version: 1, hooks };
+}
+
+/**
+ * The Claude Code status line feeds the village the model, cost, context and rate limits
+ * (scripts/statusline.ts → POST /api/statusline). A status line the user already had is kept in
+ * ~/.agent-village/config.json as wrappedStatusLine: our script runs it and uninstall puts it back.
+ */
+export interface StatusLine { type?: string; command?: string; [k: string]: unknown }
+
+export function statusLineFor(scriptPath: string): StatusLine {
+  return { type: 'command', command: `node "${scriptPath.replace(/\\/g, '/')}"` };
+}
+
+/** True for the status line this tool added (recognised by the script path). */
+export function isVillageStatusLine(sl: unknown): boolean {
+  if (!sl || typeof sl !== 'object') return false;
+  const c = (sl as StatusLine).command;
+  return typeof c === 'string' && /\/scripts\/statusline\.ts"?\s*$/.test(c.replace(/\\/g, '/'));
+}
+
+/** Sets our status line. `wrapped` is the user's previous one, to be saved before writing. */
+export function addStatusLine(settings: Settings, scriptPath: string): { settings: Settings; wrapped?: StatusLine } {
+  const next: Settings = structuredClone(settings);
+  const prev = next.statusLine;
+  const wrapped = prev && typeof prev === 'object' && !isVillageStatusLine(prev) ? (prev as StatusLine) : undefined;
+  next.statusLine = statusLineFor(scriptPath);
+  return { settings: next, wrapped };
+}
+
+/** Removes our status line and puts the wrapped one back. A status line that is not ours is left alone. */
+export function removeStatusLine(settings: Settings, wrapped?: StatusLine): Settings {
+  const next: Settings = structuredClone(settings);
+  if (!isVillageStatusLine(next.statusLine)) return next;
+  if (wrapped) next.statusLine = structuredClone(wrapped);
+  else delete next.statusLine;
+  return next;
+}

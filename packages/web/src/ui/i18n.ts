@@ -25,8 +25,8 @@ const pl: Record<string, Entry> = {
   lgTower: 'Wieża radarowa', lgTowerD: 'Radar się kręci, czyli szuka w internecie.',
   lgPlaza: 'Plac z fontanną', lgPlazaD: 'Myśli albo używa innych narzędzi.',
   lgCharge: 'Ładowarka', lgChargeD: 'Skończył turę i czeka na polecenie.',
-  lgWait: 'Czeka na zgodę', lgAsk: 'Ma pytanie',
-  lgNoteLive: 'Na żywo: zdarzenia przychodzą z hooków Claude Code przez lokalny serwer.',
+  lgWait: 'Czeka na zgodę', lgAsk: 'Ma pytanie', lgAgentsD: 'Kolor robota mówi, z którego agenta pochodzi: ciepłe barwy to Claude, chłodne to Copilot.',
+  lgNoteLive: 'Na żywo: zdarzenia przychodzą z hooków Claude Code i Copilota przez lokalny serwer.',
   lgNoteDemo: 'Demo: roboty i ich kroki są symulowane.',
   feedLabel: 'Ostatnie zdarzenia', camLabel: 'Kamera', rotL: 'Obróć w lewo (Q)', rotR: 'Obróć w prawo (E)', zoomIn: 'Przybliż', zoomOut: 'Oddal', recenter: 'Wyśrodkuj',
   closePanel: 'Zamknij panel', hTask: 'Zadanie', hNow: 'Teraz', hLog: 'Ostatnie kroki', hLast: 'Ostatnia odpowiedź',
@@ -68,6 +68,21 @@ const pl: Record<string, Entry> = {
   lGotIt: { m: 'Przyjąłem: {answer}. Wracam do pracy.', f: 'Przyjęłam: {answer}. Wracam do pracy.' },
   rep1: 'Jasne, uwzględnię to w kolejnych krokach.', rep2: 'Dobra, wezmę to pod uwagę.', rep3: { m: 'Przyjąłem. Dam znać, jak skończę.', f: 'Przyjęłam. Dam znać, jak skończę.' },
   popThanks: 'Dzięki!', popOther: 'Dobra, inaczej', popSure: 'Jasne!', popDone: 'Gotowe!', popHi: 'Cześć!',
+  demoDone: 'Zrobione: {task}',
+  hEarned: 'Zarobione', earnTokens: 'tokenów', earnIn: 'wejście', earnOut: 'wyjście', earnCw: 'zapis cache', earnCr: 'odczyt cache',
+  earnCost: '≈ {usd} (szacunek Claude Code po cenniku)', earnCtx: 'Kontekst: {pct}%', earnNone: 'Jeszcze nic. Tokeny pojawią się po pierwszej turze.',
+  earnCopilot: 'Copilot nie podaje tokenów dla pojedynczej sesji.',
+  a_earned: { m: 'zarobił {n} tokenów', f: 'zarobiła {n} tokenów' },
+  bankName: 'Bank', bankSub: 'Płaci robotom za pracę i pokazuje, ile limitu zostało.', bankOpen: 'Otwórz bank', closeBank: 'Zamknij bank',
+  bank5h: 'Okno 5-godzinne', bank7d: 'Okno tygodniowe', bankSpend: 'Limit wydatków', bankLeft: 'zostało {pct}%', bankResets: 'odnowi się {when}',
+  bankClaudeNone: 'Brak danych. Limity widać tylko w planach Pro i Max, po pierwszej odpowiedzi Claude Code z zainstalowanym status line.',
+  bankCopilotReq: '{used} z {allowance} zapytań premium w miesiącu {month}', bankCopilotUsed: '{used} zapytań premium w miesiącu {month}',
+  bankCopilotNone: 'Niepodłączony. Uruchom: pnpm copilot:setup', bankCopilotErr: 'Ostatni odczyt się nie udał: {msg}',
+  bankCost: 'Koszt sesji na żywo', bankCostNote: 'szacunek Claude Code po cenniku',
+  bankSource: 'Skąd liczby: Claude z status line Claude Code, Copilot z API rozliczeń GitHuba (co 10 minut).',
+  bankDemo: 'Demo: bank jest symulowany.',
+  lgBank: 'Bank', lgBankD: 'Płaci robotom monetami za tokeny. Szklane skarbce pokazują, ile limitu zostało: lewy Claude, prawy Copilot.',
+  copilotMark: 'Copilot',
 };
 
 const en: Record<string, Entry> = {
@@ -88,8 +103,8 @@ const en: Record<string, Entry> = {
   lgTower: 'Radar tower', lgTowerD: 'The dish spins while it searches the web.',
   lgPlaza: 'Fountain plaza', lgPlazaD: 'Thinking, or using other tools.',
   lgCharge: 'Charging station', lgChargeD: 'Finished its turn and waits for your next prompt.',
-  lgWait: 'Needs approval', lgAsk: 'Has a question',
-  lgNoteLive: 'Live: events come from Claude Code hooks through the local server.',
+  lgWait: 'Needs approval', lgAsk: 'Has a question', lgAgentsD: 'The colour tells which agent a robot comes from: warm shades are Claude, cool shades are Copilot.',
+  lgNoteLive: 'Live: events come from Claude Code and Copilot hooks through the local server.',
   lgNoteDemo: 'Demo: the robots and their steps are simulated.',
   feedLabel: 'Recent events', camLabel: 'Camera', rotL: 'Rotate left (Q)', rotR: 'Rotate right (E)', zoomIn: 'Zoom in', zoomOut: 'Zoom out', recenter: 'Recenter',
   closePanel: 'Close panel', hTask: 'Task', hNow: 'Now', hLog: 'Recent steps', hLast: 'Last reply',
@@ -131,6 +146,21 @@ const en: Record<string, Entry> = {
   lGotIt: 'Got it: {answer}. Back to work.',
   rep1: "Sure, I'll take that into account in the next steps.", rep2: "OK, I'll keep that in mind.", rep3: "Got it. I'll let you know when I'm done.",
   popThanks: 'Thanks!', popOther: 'OK, another way', popSure: 'Sure!', popDone: 'Done!', popHi: 'Hi!',
+  demoDone: 'Done: {task}',
+  hEarned: 'Earned', earnTokens: 'tokens', earnIn: 'input', earnOut: 'output', earnCw: 'cache write', earnCr: 'cache read',
+  earnCost: '≈ {usd} (Claude Code estimate at list price)', earnCtx: 'Context: {pct}%', earnNone: 'Nothing yet. Tokens show up after the first turn.',
+  earnCopilot: 'Copilot does not report tokens per session.',
+  a_earned: 'earned {n} tokens',
+  bankName: 'Bank', bankSub: 'Pays the robots for their work and shows how much of each limit is left.', bankOpen: 'Open the bank', closeBank: 'Close the bank',
+  bank5h: '5-hour window', bank7d: 'Weekly window', bankSpend: 'Spend limit', bankLeft: '{pct}% left', bankResets: 'resets {when}',
+  bankClaudeNone: 'No data yet. Limits show only on Pro and Max plans, after the first Claude Code answer with the status line installed.',
+  bankCopilotReq: '{used} of {allowance} premium requests in {month}', bankCopilotUsed: '{used} premium requests in {month}',
+  bankCopilotNone: 'Not connected. Run: pnpm copilot:setup', bankCopilotErr: 'The last check failed: {msg}',
+  bankCost: 'Cost of live sessions', bankCostNote: 'Claude Code estimate at list price',
+  bankSource: 'Where the numbers come from: Claude from the Claude Code status line, Copilot from the GitHub billing API (every 10 minutes).',
+  bankDemo: 'Demo: the bank is simulated.',
+  lgBank: 'Bank', lgBankD: 'Pays robots in coins for their tokens. The glass vaults show how much of each limit is left: left Claude, right Copilot.',
+  copilotMark: 'Copilot',
 };
 
 const STR: Record<Lang, Record<string, Entry>> = { pl, en };
@@ -199,4 +229,29 @@ export function applyStatic(root: ParentNode = document): void {
       if (i > 0) el.setAttribute(pair.slice(0, i), t(pair.slice(i + 1)));
     }
   });
+}
+
+/** Compact number in the UI language: 18 400 → "18 tys." (PL) or "18K" (EN). */
+export function fmtCompact(n: number): string {
+  return new Intl.NumberFormat(lang === 'pl' ? 'pl-PL' : 'en-US', { notation: 'compact', maximumFractionDigits: n < 10_000 ? 1 : 0 }).format(n);
+}
+
+/** Full number with grouping in the UI language. */
+export function fmtNumber(n: number): string {
+  return new Intl.NumberFormat(lang === 'pl' ? 'pl-PL' : 'en-US').format(Math.round(n));
+}
+
+/** "$3.40" in the UI language. */
+export function fmtUsd(n: number): string {
+  return new Intl.NumberFormat(lang === 'pl' ? 'pl-PL' : 'en-US', { style: 'currency', currency: 'USD' }).format(n);
+}
+
+/** A reset time in local time: "14:30" today, "pon. 09:00" / "Mon 09:00" within a week, a date after that. */
+export function fmtWhen(ms: number): string {
+  const loc = lang === 'pl' ? 'pl-PL' : 'en-US';
+  const d = new Date(ms), now = new Date();
+  const time = new Intl.DateTimeFormat(loc, { hour: '2-digit', minute: '2-digit' }).format(d);
+  if (d.toDateString() === now.toDateString()) return time;
+  if (ms - now.getTime() < 6.5 * 86_400_000) return new Intl.DateTimeFormat(loc, { weekday: 'short' }).format(d) + ' ' + time;
+  return new Intl.DateTimeFormat(loc, { day: 'numeric', month: 'short' }).format(d) + ' ' + time;
 }

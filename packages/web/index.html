@@ -26,6 +26,7 @@
     </div>
     <div class="right">
       <div class="controls">
+        <button class="bankchip card" id="bankChip" type="button"></button>
         <div class="stats card" role="status" aria-live="polite">
           <span class="stat"><i class="dot work"></i><b id="sWork">0</b><span class="lbl" data-i18n="statWork"></span></span>
           <button class="stat waitbtn" id="sWaitBtn" type="button"><i class="dot wait"></i><b id="sWait">0</b><span class="lbl" data-i18n="statWait"></span></button>
@@ -62,6 +63,8 @@
           <li><span class="sw" style="background:#6fc7e8"></span><span><b data-i18n="lgPlaza"></b><br><span class="d" data-i18n="lgPlazaD"></span></span></li>
           <li><span class="sw" style="background:#3cc0b0"></span><span><b data-i18n="lgCharge"></b><br><span class="d" data-i18n="lgChargeD"></span></span></li>
           <li><span class="sw g" style="background:var(--alert);border-color:var(--alert-dark);color:var(--alert-ink)">!</span><span><b data-i18n="lgWait"></b> <span class="d">·</span> <span class="sw g inl" style="background:var(--ask);border-color:var(--ask-dark);color:var(--ask-ink)">?</span> <b data-i18n="lgAsk"></b></span></li>
+          <li><span class="sw" style="background:#ffc93d"></span><span><b data-i18n="lgBank"></b><br><span class="d" data-i18n="lgBankD"></span></span></li>
+          <li><span class="sw" style="background:#e8794a"></span><span><b>Claude Code</b> <span class="d">·</span> <span class="sw inl" style="background:#4d8dff"></span> <b>GitHub Copilot</b><br><span class="d" data-i18n="lgAgentsD"></span></span></li>
         </ul>
         <p class="note" id="legendNote"></p>
       </details>
@@ -86,6 +89,7 @@
   <div class="p-body" id="pBody">
     <section><h3 data-i18n="hTask"></h3><p id="pTask"></p></section>
     <section><h3 data-i18n="hNow"></h3><div class="now" id="pNow"></div><div class="progress" id="pProgWrap"><i></i></div></section>
+    <section id="pEarnWrap"><h3 data-i18n="hEarned"></h3><div class="earn" id="pEarn"></div></section>
     <section id="pAction" hidden></section>
     <section id="pLastWrap" hidden><h3 data-i18n="hLast"></h3><p class="last" id="pLast"></p></section>
     <section><h3 data-i18n="hLog"></h3><ol class="log" id="pLog"></ol></section>
@@ -101,6 +105,15 @@
       <button class="btn small danger" id="pStop" type="button" data-i18n="stop"></button>
     </div>
   </div>
+</aside>
+
+<aside class="panel card bankcard" id="bankCard" hidden aria-labelledby="bankTitle">
+  <div class="p-head">
+    <div class="b-avatar" aria-hidden="true"></div>
+    <div class="p-title"><h2 id="bankTitle">Bank</h2><p class="p-meta" id="bankSubtitle"></p></div>
+    <button class="icon-btn" id="bankClose" type="button" data-i18n-attr="aria-label:closeBank">×</button>
+  </div>
+  <div class="p-body" id="bankBody"></div>
 </aside>
 
 <div class="backdrop" id="newDlg" hidden>

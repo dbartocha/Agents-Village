@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict';
 import { test } from 'node:test';
-import { parseHookPayload, projectName, relPath, stationForTool, summarizeTool } from '../src/index.ts';
+import { canonicalTool, parseAgentKind, parseHookPayload, projectName, relPath, stationForTool, summarizeTool } from '../src/index.ts';
 
 test('tools map to stations', () => {
   assert.equal(stationForTool('Read'), 'lib');
@@ -8,6 +8,18 @@ test('tools map to stations', () => {
   assert.equal(stationForTool('Bash'), 'forge');
   assert.equal(stationForTool('WebSearch'), 'tower');
   assert.equal(stationForTool('TodoWrite'), 'plaza');
+});
+
+test('GitHub Copilot tools map to the same stations', () => {
+  assert.equal(stationForTool('view'), 'lib');
+  assert.equal(stationForTool('edit'), 'site');
+  assert.equal(stationForTool('powershell'), 'forge');
+  assert.equal(stationForTool('run_in_terminal'), 'forge');
+  assert.equal(stationForTool('fetch_webpage'), 'tower');
+  assert.equal(canonicalTool('create_file'), 'Write');
+  assert.equal(summarizeTool('read_file', { filePath: 'C:\\dev\\shop\\a.ts' }, 'C:\\dev\\shop'), 'a.ts');
+  assert.equal(parseAgentKind('Copilot'), 'copilot');
+  assert.equal(parseAgentKind('other'), 'claude');
 });
 
 test('paths are shown relative to the project on Windows and POSIX', () => {

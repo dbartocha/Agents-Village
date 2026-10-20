@@ -3,7 +3,10 @@ import { existsSync, readFileSync, statSync } from 'node:fs';
 import { createServer } from 'node:http';
 import type { IncomingMessage, Server, ServerResponse } from 'node:http';
 import { extname, join, normalize, resolve, sep } from 'node:path';
-import { parseHookPayload } from '../../shared/src/index.ts';
+import { parseAgentKind, parseHookPayload } from '../../shared/src/index.ts';
+import { normalizeCopilotPayload } from './copilot.ts';
+import { parseStatusLine } from './statusline.ts';
+import type { UsageTracker } from './usage.ts';
 import type { Decision, ServerMessage } from '../../shared/src/index.ts';
 import type { VillageConfig } from './config.ts';
 import { PermissionBroker, permissionHookResponse } from './permissions.ts';
@@ -16,6 +19,8 @@ export interface AppOptions {
   version: string;
   /** Folder with the built web town (packages/web/dist). */
   webRoot: string;
+  /** Reads token usage from Claude Code transcripts after hooks (optional in tests). */
+  usage?: UsageTracker;
   log?: (line: string) => void;
 }
 
@@ -103,17 +108,23 @@ export function createApp(opts: AppOptions): Server {
     catch { return false; }
   };
 
-  async function handleHook(req: IncomingMessage, res: ServerResponse, url: URL) {
+  /** POST /hooks (Claude Code) and POST /hooks/copilot?event=<name> (GitHub Copilot, via scripts/copilot-hook.ts). */
+  async function handleHook(req: IncomingMessage, res: ServerResponse, url: URL, copilotPath: boolean) {
     if (!tokenOk(req, url)) return json(res, 401, { error: 'Bad or missing X-Agent-Village-Token' });
     let body: unknown;
     try { body = JSON.parse(await readBody(req)); }
     catch { return json(res, 400, { error: 'Body must be JSON' }); }
-    const parsed = parseHookPayload(body);
+    // The X-Agent-Village-Agent header is kept for forwarders installed before /hooks/copilot existed.
+    const provider = copilotPath ? 'copilot' : parseAgentKind(req.headers['x-agent-village-agent'] ?? url.searchParams.get('agent'));
+    const event = url.searchParams.get('event') || (req.headers['x-agent-village-event'] as string | undefined) || undefined;
+    const parsed = provider === 'copilot' ? normalizeCopilotPayload(body, event) : parseHookPayload(body);
     if (!parsed.ok) return json(res, 400, { error: parsed.error });
-    const outcome = state.handleHook(parsed.value);
+    const outcome = state.handleHook(parsed.value, provider);
     const p = parsed.value;
-    log(`hook ${p.hook_event_name}${typeof p.tool_name === 'string' ? ' ' + p.tool_name : ''} · ${p.session_id.slice(0, 8)}`);
-    if (!outcome.holdPermissionId) return send(res, 200, '', 'text/plain; charset=utf-8');
+    if (provider === 'claude') opts.usage?.onHook(p);
+    log(`hook ${provider === 'copilot' ? 'copilot ' : ''}${p.hook_event_name}${typeof p.tool_name === 'string' ? ' ' + p.tool_name : ''} - ${p.session_id.replace(/^copilot:/, '').slice(0, 8)}`);
+    // Copilot hooks are always answered at once: the village never decides for Copilot.
+    if (!outcome.holdPermissionId || provider !== 'claude') return send(res, 200, '', 'text/plain; charset=utf-8');
 
     const id = outcome.holdPermissionId;
     let closed = false;
@@ -127,6 +138,18 @@ export function createApp(opts: AppOptions): Server {
     }
     log(`permission ${id}: ${decision}`);
     return send(res, 200, permissionHookResponse(decision));
+  }
+
+  /** POST /api/statusline: what Claude Code passed to its status line (model, cost, context, rate limits). */
+  async function handleStatusLine(req: IncomingMessage, res: ServerResponse, url: URL) {
+    if (!tokenOk(req, url)) return json(res, 401, { error: 'Bad or missing X-Agent-Village-Token' });
+    let body: unknown;
+    try { body = JSON.parse(await readBody(req)); }
+    catch { return json(res, 400, { error: 'Body must be JSON' }); }
+    const info = parseStatusLine(body);
+    if (!info) return json(res, 400, { error: 'Body must be a JSON object' });
+    state.applyStatusLine(info);
+    return send(res, 200, '', 'text/plain; charset=utf-8');
   }
 
   async function handleDecision(req: IncomingMessage, res: ServerResponse, url: URL, id: string) {
@@ -188,7 +211,9 @@ export function createApp(opts: AppOptions): Server {
       if (!res.headersSent) json(res, 500, { error: 'Internal error' });
     };
     try {
-      if (path === '/hooks' && req.method === 'POST') return void handleHook(req, res, url).catch(fail);
+      if (path === '/hooks' && req.method === 'POST') return void handleHook(req, res, url, false).catch(fail);
+      if (path === '/hooks/copilot' && req.method === 'POST') return void handleHook(req, res, url, true).catch(fail);
+      if (path === '/api/statusline' && req.method === 'POST') return void handleStatusLine(req, res, url).catch(fail);
       if (path === '/events' && req.method === 'GET') return handleEvents(req, res, url);
       if (path === '/api/health' && req.method === 'GET') {
         return json(res, 200, { ok: true, name: 'agent-village', version, approvals: state.approvals, sessions: state.sessions.size });
@@ -199,7 +224,7 @@ export function createApp(opts: AppOptions): Server {
       }
       const m = path.match(/^\/api\/permissions\/([\w-]+)$/);
       if (m && req.method === 'POST') return void handleDecision(req, res, url, m[1]).catch(fail);
-      if (path.startsWith('/api/') || path === '/hooks' || path === '/events') return json(res, 405, { error: 'Method not allowed' });
+      if (path.startsWith('/api/') || path === '/hooks' || path === '/hooks/copilot' || path === '/events') return json(res, 405, { error: 'Method not allowed' });
       if (req.method === 'GET' || req.method === 'HEAD') return serveStatic(req, res, url);
       return send(res, 405, 'Method not allowed', 'text/plain');
     } catch (err) { fail(err); }

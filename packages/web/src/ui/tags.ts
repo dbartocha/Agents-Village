@@ -1,10 +1,11 @@
 /** Name tags, "!" / "?" bubbles and speech pops that float above robots (plain DOM over the canvas). */
+import { AGENT_LABELS, modelLabel } from '../../../shared/src/index.ts';
 import type { PopKind, Robot } from '../agents/robot';
 import { $ } from '../lib/util';
 import type { CameraRig } from '../world/camera';
 import { t } from './i18n';
 
-interface Tag { el: HTMLDivElement; bubble: HTMLButtonElement; name: HTMLSpanElement }
+interface Tag { el: HTMLDivElement; bubble: HTMLButtonElement; name: HTMLSpanElement; model: HTMLSpanElement }
 
 export class Tags {
   private readonly root = $('#tags');
@@ -22,6 +23,10 @@ export class Tags {
       let tag = this.tags.get(r.id);
       if (!tag) tag = this.create(r);
       tag.name.textContent = r.name;
+      // "Atlas · Opus": the model once the status line or the transcript told us.
+      const model = modelLabel(r.session);
+      const modelText = model ? ' · ' + model : '';
+      if (tag.model.textContent !== modelText) tag.model.textContent = modelText;
       tag.el.classList.toggle('sel', r.id === selectedId);
       const st = r.session.status;
       const on = (st === 'waiting' || st === 'asking') && !r.leaving;
@@ -48,9 +53,14 @@ export class Tags {
   }
 
   pop(r: Robot, key: string, kind: PopKind, rig: CameraRig): void {
+    this.popText(r, t(key), kind, rig);
+  }
+
+  /** A pop with ready text (earned tokens: "+18K"). */
+  popText(r: Robot, text: string, kind: PopKind | 'coin', rig: CameraRig): void {
     const el = document.createElement('div');
     el.className = 'pop ' + kind;
-    el.textContent = t(key);
+    el.textContent = text;
     const p = rig.toScreen(r.x, 2.3, r.z);
     el.style.left = p.x + 'px';
     el.style.top = p.y + 'px';
@@ -75,14 +85,23 @@ export class Tags {
     nameBtn.className = 'name';
     const dot = document.createElement('i');
     dot.style.background = r.color;
+    nameBtn.title = AGENT_LABELS[r.session.provider ?? 'claude'];
     const name = document.createElement('span');
-    nameBtn.append(dot, name);
+    const model = document.createElement('span');
+    model.className = 'mdl';
+    nameBtn.append(dot, name, model);
+    if ((r.session.provider ?? 'claude') === 'copilot') {
+      const mark = document.createElement('span');
+      mark.className = 'mark copilot';
+      mark.textContent = t('copilotMark');
+      nameBtn.append(mark);
+    }
     el.append(bubble, nameBtn);
     const pickIt = () => this.onPick(r.id);
     bubble.addEventListener('click', pickIt);
     nameBtn.addEventListener('click', pickIt);
     this.root.appendChild(el);
-    const tag = { el, bubble, name };
+    const tag = { el, bubble, name, model };
     this.tags.set(r.id, tag);
     return tag;
   }

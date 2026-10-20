@@ -2,8 +2,9 @@ import {
   PROTOCOL_VERSION, QUESTION_TOOLS, ROBOT_NAMES, clip, projectName, stationForTool, summarizeTool,
 } from '../../shared/src/index.ts';
 import type {
-  Activity, ActivityKind, HookPayload, Resolution, ServerMessage, SessionInfo, Snapshot,
+  Activity, ActivityKind, Bank, CopilotBank, HookPayload, Provider, Resolution, ServerMessage, SessionInfo, Snapshot, TokenUsage,
 } from '../../shared/src/index.ts';
+import type { StatusLineInfo } from './statusline.ts';
 
 export interface StateOptions {
   approvals: boolean;
@@ -33,6 +34,7 @@ const str = (v: unknown): string => (typeof v === 'string' ? v : '');
 export class VillageState {
   readonly sessions = new Map<string, SessionInfo>();
   readonly recent: Activity[] = [];
+  readonly bank: Bank = {};
   private seq = 0;
   private permSeq = 0;
   private readonly listeners = new Set<Listener>();
@@ -64,12 +66,14 @@ export class VillageState {
       approvals: this.opts.approvals,
       sessions: [...this.sessions.values()].map(s => structuredClone(s)),
       recent: this.recent.slice(-200),
+      bank: structuredClone(this.bank),
     };
   }
 
-  handleHook(p: HookPayload): HookOutcome {
+  /** `provider` says which coding agent sent the hook (the payload is already in Claude Code shape). */
+  handleHook(p: HookPayload, provider: Provider = 'claude'): HookOutcome {
     const now = this.now();
-    const s = this.ensureSession(p, now);
+    const s = this.ensureSession(p, now, provider);
     const out: Activity[] = [];
     const emit = (kind: ActivityKind, extra: Partial<Activity> = {}) => { out.push(this.emit(s, kind, extra)); };
     const agentType = str(p.agent_type) || undefined;
@@ -110,7 +114,8 @@ export class VillageState {
         const tool = str(p.tool_name) || s.currentTool?.tool || 'Tool';
         const target = summarizeTool(tool, p.tool_input, s.cwd) || s.currentTool?.target || '';
         const id = `perm-${++this.permSeq}`;
-        const approvable = this.opts.approvals;
+        // Only Claude Code can be answered from the village; Copilot requests are watch-only.
+        const approvable = this.opts.approvals && provider === 'claude';
         s.pending = {
           id, tool, target, createdAt: now, approvable,
           expiresAt: approvable ? now + this.opts.approvalTimeoutSec * 1000 : undefined,
@@ -215,6 +220,68 @@ export class VillageState {
     return undefined;
   }
 
+  /** New token totals for a session (read from its transcript). Broadcasts only when something changed. */
+  setUsage(sessionId: string, usage: TokenUsage, model?: string): boolean {
+    const s = this.sessions.get(sessionId);
+    if (!s) return false;
+    const same = s.usage && s.usage.input === usage.input && s.usage.output === usage.output
+      && s.usage.cacheWrite === usage.cacheWrite && s.usage.cacheRead === usage.cacheRead;
+    const newModel = !!model && !s.modelName && s.model !== model;
+    if (same && !newModel) return false;
+    s.usage = { ...usage };
+    if (newModel) s.model = model;
+    this.broadcast({ type: 'session', session: structuredClone(s) });
+    return true;
+  }
+
+  /** The bank pays the robot: tokens used since the previous 'earned'. */
+  earned(sessionId: string, tokens: number): Activity | undefined {
+    const s = this.sessions.get(sessionId);
+    if (!s || tokens <= 0) return undefined;
+    return this.emit(s, 'earned', { tokens });
+  }
+
+  /** Model, cost, context and Claude limits from the Claude Code status line. Broadcasts only real changes. */
+  applyStatusLine(info: StatusLineInfo): { session: boolean; bank: boolean } {
+    const out = { session: false, bank: false };
+    const s = info.sessionId ? this.sessions.get(info.sessionId) : undefined;
+    if (s) {
+      const next = {
+        modelName: info.modelName ?? s.modelName,
+        model: info.modelId ?? s.model,
+        costUsd: info.costUsd === undefined ? s.costUsd : Math.round(info.costUsd * 100) / 100,
+        contextPct: info.contextPct === undefined ? s.contextPct : Math.round(info.contextPct * 10) / 10,
+      };
+      if (next.modelName !== s.modelName || next.model !== s.model || next.costUsd !== s.costUsd || next.contextPct !== s.contextPct) {
+        Object.assign(s, next);
+        for (const k of ['modelName', 'model', 'costUsd', 'contextPct'] as const) if (s[k] === undefined) delete s[k];
+        this.broadcast({ type: 'session', session: structuredClone(s) });
+        out.session = true;
+      }
+    }
+    if (info.claude) {
+      const prev = this.bank.claude;
+      const { updatedAt: _a, ...prevData } = prev ?? { updatedAt: 0 };
+      const merged = { ...prevData, ...info.claude };
+      if (JSON.stringify(merged) !== JSON.stringify(prevData)) {
+        this.bank.claude = { ...merged, updatedAt: this.now() };
+        this.broadcast({ type: 'bank', bank: structuredClone(this.bank) });
+        out.bank = true;
+      }
+    }
+    return out;
+  }
+
+  /** Copilot premium requests this month (GitHub billing API). Broadcasts only real changes. */
+  setCopilotBank(b: CopilotBank): boolean {
+    const prev = this.bank.copilot;
+    if (prev && prev.used === b.used && prev.allowance === b.allowance && prev.month === b.month && prev.error === b.error) return false;
+    this.bank.copilot = { ...b };
+    if (this.bank.copilot.error === undefined) delete this.bank.copilot.error;
+    this.broadcast({ type: 'bank', bank: structuredClone(this.bank) });
+    return true;
+  }
+
   /** Removes sessions that ended a while ago or went silent. Returns removed ids. */
   prune(): string[] {
     const now = this.now();
@@ -230,12 +297,12 @@ export class VillageState {
     return removed;
   }
 
-  private ensureSession(p: HookPayload, now: number): SessionInfo {
+  private ensureSession(p: HookPayload, now: number, provider: Provider): SessionInfo {
     let s = this.sessions.get(p.session_id);
     if (!s) {
       const { name, f } = this.pickName();
       s = {
-        id: p.session_id, name, f,
+        id: p.session_id, provider, name, f,
         cwd: str(p.cwd), project: projectName(str(p.cwd)),
         status: 'idle', startedAt: now, updatedAt: now, subagents: 0, toolCount: 0,
       };

@@ -14,4 +14,6 @@ export interface App {
   select(robot: Robot | null, focus?: boolean): void;
   setFollow(on: boolean): void;
   switchTo(kind: 'live' | 'demo'): void;
+  /** Opens the bank card and turns the camera to the bank. */
+  openBank(): void;
 }

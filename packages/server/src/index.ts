@@ -7,10 +7,12 @@
 import { spawn } from 'node:child_process';
 import { readFileSync } from 'node:fs';
 import { fileURLToPath } from 'node:url';
-import { resolveConfig } from './config.ts';
+import { loadStoredConfig, resolveConfig } from './config.ts';
+import { CopilotBankPoller } from './copilot-bank.ts';
 import { createApp } from './http.ts';
 import { PermissionBroker } from './permissions.ts';
 import { VillageState } from './state.ts';
+import { UsageTracker } from './usage.ts';
 
 const pkg = JSON.parse(readFileSync(new URL('../package.json', import.meta.url), 'utf8')) as { version: string };
 const webRoot = fileURLToPath(new URL('../../web/dist', import.meta.url));
@@ -27,7 +29,18 @@ function main(): void {
   const log = (line: string) => { if (!quiet) console.log(`[village] ${new Date().toLocaleTimeString()} ${line}`); };
   const state = new VillageState({ approvals: config.approvals, approvalTimeoutSec: config.approvalTimeoutSec });
   const broker = new PermissionBroker();
-  const server = createApp({ config, state, broker, version: pkg.version, webRoot, log });
+  const usage = new UsageTracker({
+    onUsage: (id, u, model) => state.setUsage(id, u, model),
+    onEarned: (id, tokens) => { if (state.earned(id, tokens)) log(`earned ${tokens} tokens - ${id.slice(0, 8)}`); },
+    log,
+  });
+  state.subscribe(msg => { if (msg.type === 'removed') usage.forget(msg.sessionId); });
+  const copilot = loadStoredConfig().copilot;
+  const poller = copilot?.username && copilot.githubToken
+    ? new CopilotBankPoller({ settings: { username: copilot.username, githubToken: copilot.githubToken, monthlyAllowance: copilot.monthlyAllowance }, state, log })
+    : undefined;
+  poller?.start();
+  const server = createApp({ config, state, broker, version: pkg.version, webRoot, usage, log });
   const pruneTimer = setInterval(() => state.prune(), 5_000);
   pruneTimer.unref();
 
@@ -47,6 +60,7 @@ function main(): void {
     console.log(`  Agent Village ${pkg.version} is running`);
     console.log(`  Town:       ${url}`);
     console.log(`  Approvals:  ${config.approvals ? `on (waits up to ${config.approvalTimeoutSec}s for your click)` : 'off (watch only)'}`);
+    console.log(`  Copilot:    ${poller ? `vault on (GitHub user ${copilot?.username})` : 'vault off (run pnpm copilot:setup)'}`);
     console.log(`  Config:     ${config.configDir}`);
     console.log('  Stop:       Ctrl+C');
     console.log('');
@@ -56,6 +70,8 @@ function main(): void {
   const shutdown = () => {
     log('shutting down');
     broker.cancelAll();
+    usage.stop();
+    poller?.stop();
     server.close();
     server.closeAllConnections();
     setTimeout(() => process.exit(0), 300).unref();

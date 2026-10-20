@@ -19,12 +19,15 @@ import type { Robot } from './agents/robot';
 import type { Sink, Source, SourceState } from './agents/source';
 import { $ } from './lib/util';
 import type { App } from './ui/app';
+import { BankView } from './ui/bank';
 import { NewRobotDialog } from './ui/dialog';
 import { Hud } from './ui/hud';
-import { applyStatic, onLang } from './ui/i18n';
+import { applyStatic, fmtCompact, onLang } from './ui/i18n';
 import { Panel } from './ui/panel';
 import { Tags } from './ui/tags';
 import { CameraRig, attachControls } from './world/camera';
+import { updateCoins } from './world/coins';
+import { BANK } from './world/layout';
 import { createRenderer, onTheme, scene, watchTheme } from './world/kit';
 import { updateParticles } from './world/particles';
 import { buildTown } from './world/town';
@@ -69,11 +72,13 @@ const app: App = {
   select,
   setFollow,
   switchTo,
+  openBank,
 };
 
 const tags = new Tags(id => { const r = village.get(id); if (r) select(r, false); });
 const hud = new Hud(app);
 const panel = new Panel(app);
+const bankView = new BankView(app, levels => town.setVaults(levels), openBank);
 const village = new Village(town, {
   changed(robot) {
     robotsDirty = true;
@@ -82,16 +87,26 @@ const village = new Village(town, {
   },
   feed(items) { hud.setFeed(items); },
   pop(robot, key, kind) { tags.pop(robot, key, kind, rig); },
+  paid(robot, tokens) { tags.popText(robot, '+' + fmtCompact(tokens), 'coin', rig); },
+  bank(b) { bankView.set(b); },
 });
 const dialog = new NewRobotDialog(app, () => village.system('sysFull'));
 town.onTowerDone = () => village.system('sysTower');
 
 function select(r: Robot | null, focus = false): void {
+  if (r) bankView.close();
   selected = r;
   panel.open(r);
   setFollow(false);
   if (r && focus) rig.focus(r.x, r.z);
   robotsDirty = true;
+}
+
+/** Opens the bank card and turns the camera to the bank. */
+function openBank(): void {
+  select(null);
+  bankView.show();
+  rig.focus(BANK.center[0] * 0.8, BANK.center[1] * 0.8);
 }
 
 function setFollow(on: boolean): void {
@@ -113,6 +128,7 @@ function use(next: Source): void {
   select(null);
   village.clear();
   tags.clear();
+  bankView.set({});
   source = next;
   hud.setMode(source.kind, source.kind === 'demo' ? 'demo' : 'connecting');
   source.start(sink);
@@ -160,18 +176,19 @@ async function boot(): Promise<void> {
 /* ---------- input ---------- */
 attachControls(canvas, rig, {
   onClick: (x, y) => {
-    const hit = rig.pick(x, y, village.hits());
+    const hit = rig.pick(x, y, [...village.hits(), ...town.bankHits]);
     const r = hit ? village.get(hit.userData.robotId as string) : undefined;
     if (r) select(r, false);
-    else if (selected) select(null);
+    else if (hit && town.bankHits.includes(hit as THREE.Mesh)) openBank();
+    else { if (selected) select(null); bankView.close(); }
   },
-  onHover: (x, y) => !!rig.pick(x, y, village.hits()),
+  onHover: (x, y) => !!rig.pick(x, y, [...village.hits(), ...town.bankHits]),
   onUserMove: () => { if (following) setFollow(false); },
 });
 window.addEventListener('keydown', e => {
   const target = e.target as HTMLElement;
   if (target.closest?.('input,textarea')) { if (e.key === 'Escape') target.blur(); return; }
-  if (e.key === 'Escape') { if (dialog.isOpen) dialog.close(); else select(null); }
+  if (e.key === 'Escape') { if (dialog.isOpen) dialog.close(); else { select(null); bankView.close(); } }
   if (e.key === 'q' || e.key === 'Q') rig.rotate(-1);
   if (e.key === 'e' || e.key === 'E') rig.rotate(1);
 });
@@ -182,6 +199,7 @@ function relabel(): void {
   hud.setMode(source.kind, state);
   hud.relabel();
   dialog.relabel();
+  bankView.relabel();
   panel.render(true);
 }
 onLang(relabel);
@@ -206,6 +224,7 @@ function frame(): void {
   const busy = village.update(dt, t, rig.az);
   town.update(dt, t, busy);
   updateParticles(dt);
+  updateCoins(dt);
   if (selected) {
     selRing.visible = true;
     selRing.position.set(selected.x, 0.06, selected.z);
@@ -221,11 +240,13 @@ function frame(): void {
     hud.render();
   }
   tags.place(robots, rig);
+  bankView.place(rig, town.bankLabel.x, town.bankLabel.y, town.bankLabel.z);
   uiT -= dt;
-  if (panelDirty || (uiT <= 0 && selected)) {
+  if (panelDirty || (uiT <= 0 && (selected || bankView.open))) {
     uiT = 0.25;
     panelDirty = false;
     panel.render();
+    bankView.render();
   }
   requestAnimationFrame(frame);
 }

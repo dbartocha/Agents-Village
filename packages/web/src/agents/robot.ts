@@ -90,7 +90,7 @@ export class Robot implements PoseInput {
     this.color = color;
     this.events = events;
     this.task = session.prompt;
-    this.mesh = new RobotMesh(session.id, color);
+    this.mesh = new RobotMesh(session.id, color, session.provider ?? 'claude');
   }
 
   get name(): string { return this.session.name; }

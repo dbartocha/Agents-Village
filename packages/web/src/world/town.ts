@@ -7,9 +7,9 @@ import * as THREE from 'three';
 import { R, angDiff, deg, dist2, pol, reduceMotion, rnd, rpick } from '../lib/util';
 import {
   POINT_DECAY, POINT_SCALE, basic, box, cloudMat, cyl, fireMat, lampLights, lampMat, localToWorld, mesh, ringGroup, roundedBox,
-  scene, sph, theme, toon, toonNew, winMat,
+  onTheme, scene, sph, theme, toon, toonNew, winMat,
 } from './kit';
-import { FACTORY, ISLAND_R, STATIONS } from './layout';
+import { BANK, FACTORY, ISLAND_R, STATIONS } from './layout';
 import { burst } from './particles';
 
 /** What the town needs to know each frame to animate stations. */
@@ -18,9 +18,24 @@ export interface Busy { forge: number; tower: number; site: number }
 const FLOORS = 7;
 const SEGS = FLOORS * 4;
 
+/**
+ * How full the two glass vaults of the bank are: what is LEFT of each provider's limit, 0–1.
+ * `level` undefined = unknown (empty grey vault). `mark` = a thin second line (Claude's weekly window).
+ */
+export interface VaultLevels {
+  claude: { level?: number; mark?: number };
+  copilot: { level?: number; mark?: number };
+}
+
 export interface Town {
   /** Adds n pieces to the tower on the construction site. */
   grow(n: number): void;
+  setVaults(v: VaultLevels): void;
+  /** Where the bank's floating label sits, and where earned coins start. */
+  readonly bankLabel: THREE.Vector3;
+  readonly bankCoins: THREE.Vector3;
+  /** Meshes that open the bank card when clicked. */
+  readonly bankHits: THREE.Mesh[];
   update(dt: number, t: number, busy: Busy): void;
   /** Called when a tower is finished. */
   onTowerDone?: () => void;
@@ -51,7 +66,7 @@ export function buildTown(): Town {
   flatRing(2.4, 2.6, '#d3bd92', 0.065);
   flatRing(4.75, 6.05, '#f2e4c2', 0.025);
   flatRing(6.05, 6.2, '#dcc9a0', 0.028);
-  const spokeAngles = [STATIONS.lib.phi, STATIONS.site.phi, STATIONS.tower.phi, STATIONS.forge.phi, STATIONS.charge.phi, FACTORY.phi];
+  const spokeAngles = [STATIONS.lib.phi, STATIONS.site.phi, STATIONS.tower.phi, STATIONS.forge.phi, STATIONS.charge.phi, FACTORY.phi, BANK.phi];
   for (const phi of spokeAngles) {
     const L = 3.2, p = pol(6 + L / 2, phi);
     const m = mesh(new THREE.PlaneGeometry(1.25, L), '#f2e4c2', p[0], 0.026, p[1], scene, { noCast: true });
@@ -122,7 +137,109 @@ export function buildTown(): Town {
   const SEG_WALL = cyl(1.5, 1.5, 0.44, 16, false, 0, Math.PI / 2);
   const SEG_WIN = cyl(1.53, 1.53, 0.15, 16, true, 0, Math.PI / 2);
   const tower = { i: 0, items: [] as THREE.Group[], doneT: 0, clearT: 0 };
-  const townApi: Town = { grow, update };
+
+  /* ---------- bank: columns, pediment, coin sign and two glass vaults ---------- */
+  const bankG = ringGroup(BANK.bR, BANK.phi);
+  const bankHits: THREE.Mesh[] = [];
+  const vaults = (() => {
+    mesh(cyl(2.75, 2.75, 0.05, 64), '#f3e7cb', 0, 0.03, 0, bankG, { noCast: true });
+    const B = (geo: THREE.BufferGeometry, mat: string | THREE.Material, x: number, y: number, z: number) => {
+      const m = mesh(geo, mat, x, y, z, bankG);
+      bankHits.push(m);
+      return m;
+    };
+    B(roundedBox(2.9, 0.22, 2.1, 0.06), '#e9dcc0', 0, 0.11, 0);
+    B(box(2.2, 0.12, 0.34), '#efe4cc', 0, 0.06, 1.2);
+    B(roundedBox(2.2, 1.45, 1.25, 0.08), '#fbf0d9', 0, 0.95, -0.3);
+    B(roundedBox(0.5, 0.82, 0.08, 0.05), '#7a5134', 0, 0.63, 0.34);
+    for (const x of [-0.75, -0.25, 0.25, 0.75]) {
+      B(cyl(0.09, 0.1, 1.36, 16), '#fffaf0', x, 0.9, 0.76);
+      B(box(0.26, 0.08, 0.26), '#f3e6c8', x, 1.6, 0.76);
+      B(box(0.24, 0.06, 0.24), '#f3e6c8', x, 0.25, 0.76);
+    }
+    B(box(2.3, 0.16, 1.8), '#f3e6c8', 0, 1.72, -0.02);
+    const tri = new THREE.Shape();
+    tri.moveTo(-1.22, 0); tri.lineTo(1.22, 0); tri.lineTo(0, 0.62); tri.lineTo(-1.22, 0);
+    const ped = new THREE.ExtrudeGeometry(tri, { depth: 1.86, bevelEnabled: false });
+    ped.translate(0, 0, -0.95);
+    B(ped, '#c8913a', 0, 1.8, 0);
+    const sign = B(cyl(0.3, 0.3, 0.07, 32), '#ffc93d', 0, 2.08, 0.96);
+    sign.rotation.x = Math.PI / 2;
+    const ring = B(new THREE.TorusGeometry(0.2, 0.028, 8, 28), '#e0a419', 0, 2.08, 1.0);
+    ring.castShadow = false;
+    B(roundedBox(0.08, 0.2, 0.03, 0.012), '#e0a419', 0, 2.08, 1.01);
+    // A big coin turns slowly on the roof, so the bank reads as a bank from every side of town.
+    const spin = new THREE.Group();
+    spin.position.set(0, 2.95, 0);
+    bankG.add(spin);
+    mesh(cyl(0.05, 0.05, 0.3, 8), '#c8913a', 0, -0.38, 0, spin);
+    const big = mesh(cyl(0.4, 0.4, 0.09, 36), '#ffc93d', 0, 0, 0, spin);
+    big.rotation.x = Math.PI / 2;
+    for (const z of [0.05, -0.05]) mesh(new THREE.TorusGeometry(0.27, 0.03, 8, 30), '#e0a419', 0, 0, z, spin, { noCast: true });
+    for (const z of [0.055, -0.055]) mesh(roundedBox(0.1, 0.26, 0.03, 0.012), '#e0a419', 0, 0, z, spin, { noCast: true });
+
+    const N = 12;
+    const make = (x: number, accent: string) => {
+      B(cyl(0.42, 0.46, 0.2, 28), accent, x, 0.1, 0.12);
+      const glassMat = toonNew('#dff3ff', { transparent: true, opacity: 0.32, depthWrite: false });
+      const glass = B(cyl(0.36, 0.36, 1.5, 28, true), glassMat, x, 0.95, 0.12);
+      glass.castShadow = false;
+      B(cyl(0.42, 0.42, 0.12, 28), accent, x, 1.76, 0.12);
+      B(sph(0.08, 12, 8), '#ffc93d', x, 1.88, 0.12);
+      const coinA = toonNew('#ffc93d', { emissive: 0x000000 }), coinB = toonNew('#e8a93a', { emissive: 0x000000 });
+      const coins = Array.from({ length: N }, (_, i) => {
+        const c = mesh(cyl(0.3, 0.3, 0.09, 24), i % 2 ? coinB : coinA, x, 0.24 + i * 0.105, 0.12, bankG, { noCast: true });
+        c.visible = false;
+        return c;
+      });
+      const markMat = new THREE.MeshBasicMaterial({ color: accent });
+      const mark = mesh(new THREE.TorusGeometry(0.375, 0.022, 6, 32), markMat, x, 0.3, 0.12, bankG, { noCast: true });
+      mark.rotation.x = Math.PI / 2;
+      mark.visible = false;
+      return { glassMat, coins, coinA, coinB, mark, cur: 0, goal: 0, known: false, markCur: 0, markGoal: -1 };
+    };
+    // Seen from the town centre, Claude is on the left and Copilot on the right.
+    return { claude: make(-1.72, '#d97757'), copilot: make(1.72, '#8b5cf6'), N, spin };
+  })();
+  const bankLabel = localToWorld(bankG, 0, 3.9, 0);
+  const bankCoins = localToWorld(bankG, 0, 2.1, 1.0);
+  onTheme(night => {
+    for (const v of [vaults.claude, vaults.copilot]) {
+      v.coinA.emissive.set(night ? 0x5a3c00 : 0x000000);
+      v.coinB.emissive.set(night ? 0x4a2c00 : 0x000000);
+    }
+  });
+
+  function setVaults(l: VaultLevels): void {
+    for (const key of ['claude', 'copilot'] as const) {
+      const v = vaults[key], want = l[key];
+      v.known = want.level !== undefined;
+      v.goal = v.known ? Math.min(1, Math.max(0, want.level!)) : 0;
+      v.markGoal = want.mark === undefined ? -1 : Math.min(1, Math.max(0, want.mark));
+      v.glassMat.color.set(v.known ? '#dff3ff' : '#b8bec9');
+      v.glassMat.opacity = v.known ? 0.32 : 0.45;
+    }
+  }
+
+  function updateVaults(dt: number): void {
+    const N = vaults.N;
+    for (const v of [vaults.claude, vaults.copilot]) {
+      v.cur += (v.goal - v.cur) * Math.min(1, dt * 1.8);
+      const fill = v.cur * N;
+      v.coins.forEach((c, i) => {
+        const part = Math.min(1, Math.max(0, fill - i));
+        c.visible = part > 0.02;
+        c.scale.set(1, Math.max(0.05, part), 1);
+        c.position.y = 0.2 + i * 0.105 + 0.045 * Math.max(0.05, part);
+      });
+      if (v.markGoal < 0) { v.mark.visible = false; continue; }
+      v.markCur += (v.markGoal - v.markCur) * Math.min(1, dt * 1.8);
+      v.mark.visible = true;
+      v.mark.position.y = 0.22 + v.markCur * N * 0.105;
+    }
+  }
+
+  const townApi: Town = { grow, update, setVaults, bankLabel, bankCoins, bankHits };
 
   function grow(n: number, instant = false): void {
     for (let k = 0; k < n && tower.i <= SEGS && !tower.clearT; k++) {
@@ -344,7 +461,7 @@ export function buildTown(): Town {
     crowns.push({ c, off: R() * 6 });
   };
   const trees: Array<[number, number, number, 'round' | 'pine']> = [
-    [15, 12.2, 1.1, 'round'], [145, 11.8, 1.0, 'pine'], [255, 12.4, 1.15, 'round'], [300, 13.4, 0.9, 'pine'],
+    [358, 13.3, 1.0, 'round'], [145, 11.8, 1.0, 'pine'], [255, 12.4, 1.15, 'round'], [300, 13.4, 0.9, 'pine'],
     [207, 11.3, 0.85, 'round'], [160, 13.6, 0.9, 'round'], [240, 13.6, 1.0, 'pine'], [350, 13.6, 0.9, 'round'],
     [95, 13.8, 0.8, 'pine'], [5, 13.9, 0.8, 'pine'],
   ];
@@ -373,7 +490,7 @@ export function buildTown(): Town {
 
   {
     const flowerGeo = sph(0.075, 8, 6);
-    const centers = [...Object.values(STATIONS).filter(s => s.id !== 'plaza').map(s => s.center), FACTORY.center];
+    const centers = [...Object.values(STATIONS).filter(s => s.id !== 'plaza').map(s => s.center), FACTORY.center, BANK.center];
     const d = new THREE.Object3D();
     for (const c of ['#ff6b6b', '#ffd23f', '#ffffff', '#b388eb', '#ff8fab', '#ff9f43']) {
       const list: Array<[number, number]> = [];
@@ -438,6 +555,8 @@ export function buildTown(): Town {
     crane.cable.scale.y = Math.max(0.05, -hookY);
     crane.block.visible = busy.site > 0;
     updateTower(dt);
+    updateVaults(dt);
+    vaults.spin.rotation.y += dt * (reduceMotion ? 0 : 0.9);
     // factory
     gear.rotation.z += dt * 0.8;
     // charging pads

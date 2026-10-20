@@ -1,9 +1,10 @@
 /** The robot panel: task, current step, request (approve / answer), last reply, recent steps, actions. */
+import { totalTokens } from '../../../shared/src/index.ts';
 import type { Activity, Decision, Text } from '../../../shared/src/index.ts';
 import type { Robot } from '../agents/robot';
 import { $, esc, pick } from '../lib/util';
 import type { App } from './app';
-import { L, lang, t } from './i18n';
+import { L, fmtCompact, fmtNumber, fmtUsd, lang, t } from './i18n';
 import { logLine, metaLine, nowHTML, statusOf } from './format';
 
 const LOG_SHOWN = 40;
@@ -15,6 +16,7 @@ export class Panel {
   private robot: Robot | null = null;
   private actionSig = '';
   private logSig = '';
+  private earnSig = '';
 
   private readonly app: App;
 
@@ -56,6 +58,7 @@ export class Panel {
     this.robot = r;
     this.actionSig = '';
     this.logSig = '';
+    this.earnSig = '';
     if (!r) {
       this.el.hidden = true;
       document.body.classList.remove('panel-open');
@@ -73,7 +76,7 @@ export class Panel {
   render(full = false): void {
     const r = this.robot;
     if (!r) return;
-    if (full) { this.actionSig = ''; this.logSig = ''; }
+    if (full) { this.actionSig = ''; this.logSig = ''; this.earnSig = ''; }
     const s = r.session;
     $('#pName').textContent = r.name;
     $('#pMeta').textContent = metaLine(r);
@@ -97,6 +100,7 @@ export class Panel {
     $<HTMLButtonElement>('#pStop').disabled = s.status === 'idle' || r.leaving;
     $('#pFollow').textContent = t(this.app.following ? 'unfollow' : 'follow');
     this.renderAction(r);
+    this.renderEarned(r);
     this.renderLog(r);
     this.tick();
   }
@@ -161,6 +165,33 @@ export class Panel {
     }
     box.hidden = !html;
     box.innerHTML = html;
+  }
+
+  /** "Earned": tokens of this session (Claude Code transcript), cost estimate and context fill (status line). */
+  private renderEarned(r: Robot): void {
+    const s = r.session;
+    const sig = JSON.stringify([s.provider, s.usage, s.costUsd, s.contextPct, lang]);
+    if (sig === this.earnSig) return;
+    this.earnSig = sig;
+    let html: string;
+    if (s.provider === 'copilot') {
+      html = `<p class="big">—</p><p class="hint">${esc(t('earnCopilot'))}</p>`;
+    } else {
+      const total = totalTokens(s.usage);
+      if (!s.usage || !total) html = `<p class="hint">${esc(t('earnNone'))}</p>`;
+      else {
+        const u = s.usage;
+        const cell = (k: string, n: number) => `<div><dt>${esc(t(k))}</dt><dd title="${esc(fmtNumber(n))}">${esc(fmtCompact(n))}</dd></div>`;
+        html = `<p class="big" title="${esc(fmtNumber(total))}">${esc(fmtCompact(total))} <span>${esc(t('earnTokens'))}</span></p>`
+          + `<dl class="split">${cell('earnIn', u.input)}${cell('earnOut', u.output)}${cell('earnCw', u.cacheWrite)}${cell('earnCr', u.cacheRead)}</dl>`;
+      }
+      if (s.costUsd !== undefined) html += `<p class="cost">${esc(t('earnCost', { usd: fmtUsd(s.costUsd) }))}</p>`;
+      if (s.contextPct !== undefined) {
+        const pct = Math.max(0, Math.min(100, s.contextPct));
+        html += `<div class="ctx"><span>${esc(t('earnCtx', { pct: Math.round(pct) }))}</span><div class="ctxbar${pct > 80 ? ' hot' : ''}"><i style="width:${pct}%"></i></div></div>`;
+      }
+    }
+    $('#pEarn').innerHTML = html;
   }
 
   private renderLog(r: Robot): void {
