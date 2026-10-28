@@ -12,6 +12,7 @@ import type { Decision, ServerMessage } from '../../shared/src/index.ts';
 import type { VillageConfig } from './config.ts';
 import { PermissionBroker, permissionHookResponse } from './permissions.ts';
 import type { VillageState } from './state.ts';
+import { ControlError, ManagedSessions } from './managed.ts';
 
 export interface AppOptions {
   config: VillageConfig;
@@ -91,6 +92,9 @@ export function createApp(opts: AppOptions): Server {
   const allowedHosts = new Set([...LOOPBACK, ...config.allowedHosts.map(h => h.toLowerCase())]);
   const webRoot = resolve(opts.webRoot);
   const clients = new Set<ServerResponse>();
+  const managed = new ManagedSessions(state);
+  const controlTimer = setInterval(() => managed.expire(), 1000);
+  controlTimer.unref();
 
   const sseWrite = (res: ServerResponse, msg: ServerMessage) => {
     res.write(`event: ${msg.type}\ndata: ${JSON.stringify(msg)}\n\n`);
@@ -121,8 +125,15 @@ export function createApp(opts: AppOptions): Server {
     const event = url.searchParams.get('event') || (req.headers['x-agent-village-event'] as string | undefined) || undefined;
     const parsed = provider === 'copilot' ? normalizeCopilotPayload(body, event) : parseHookPayload(body);
     if (!parsed.ok) return json(res, 400, { error: parsed.error });
-    const outcome = state.handleHook(parsed.value, provider);
     const p = parsed.value;
+    // A shutdown hook may arrive before the supervised tool processes actually exit.
+    const deferEnd = p.hook_event_name === 'SessionEnd' && state.sessions.get(p.session_id)?.control?.status === 'stopping';
+    const outcome = deferEnd ? { activities: [], holdPermissionId: undefined } : state.handleHook(p, provider);
+    const session = state.sessions.get(p.session_id);
+    if (session && !p.agent_id) {
+      res.setHeader('X-Agent-Village-Robot-Name', encodeURIComponent(session.name));
+      res.setHeader('X-Agent-Village-Session-Id', encodeURIComponent(session.id));
+    }
     if (provider === 'claude') opts.usage?.onHook(p);
     else opts.copilotUsage?.onHook(p);
     log(`hook ${provider === 'copilot' ? 'copilot ' : ''}${p.hook_event_name}${typeof p.tool_name === 'string' ? ' ' + p.tool_name : ''} - ${p.session_id.replace(/^copilot:/, '').slice(0, 8)}`);
@@ -152,6 +163,11 @@ export function createApp(opts: AppOptions): Server {
     const info = parseStatusLine(body);
     if (!info) return json(res, 400, { error: 'Body must be a JSON object' });
     state.applyStatusLine(info);
+    const session = info.sessionId ? state.sessions.get(info.sessionId) : undefined;
+    if (session) {
+      res.setHeader('X-Agent-Village-Robot-Name', encodeURIComponent(session.name));
+      res.setHeader('X-Agent-Village-Session-Id', encodeURIComponent(session.id));
+    }
     return send(res, 200, '', 'text/plain; charset=utf-8');
   }
 
@@ -167,6 +183,32 @@ export function createApp(opts: AppOptions): Server {
     if (!broker.decide(id, decision)) return json(res, 409, { error: 'This request is no longer waiting. Answer it in the terminal.' });
     state.resolvePermission(id, decision);
     return json(res, 200, { ok: true });
+  }
+
+  async function handleControl(req: IncomingMessage, res: ServerResponse, url: URL, sessionId?: string) {
+    if (!tokenOk(req, url)) return json(res, 401, { error: 'Bad or missing token' });
+    if (!originOk(req)) return json(res, 403, { error: 'Origin not allowed' });
+    let body: unknown;
+    try { body = JSON.parse(await readBody(req)); }
+    catch { return json(res, 400, { error: 'Body must be JSON' }); }
+    try {
+      if (sessionId !== undefined) {
+        managed.requestStop(sessionId, body && typeof body === 'object' ? (body as Record<string, unknown>).launcherId : undefined);
+        return json(res, 202, { ok: true });
+      }
+      const result = managed.poll(body);
+      const s = state.sessions.get(result.sessionId);
+      if (s?.status === 'ended') {
+        // Flush final saved usage after a forced exit too; the ledger deduplicates normal exit hooks.
+        const p = { session_id: s.id, hook_event_name: 'SessionEnd' };
+        if (s.provider === 'claude') opts.usage?.onHook(p);
+        else opts.copilotUsage?.onHook(p);
+      }
+      return json(res, 200, result);
+    } catch (error) {
+      if (error instanceof ControlError) return json(res, error.status, { error: error.message });
+      throw error;
+    }
   }
 
   function handleEvents(req: IncomingMessage, res: ServerResponse, url: URL) {
@@ -217,6 +259,17 @@ export function createApp(opts: AppOptions): Server {
       if (path === '/hooks' && req.method === 'POST') return void handleHook(req, res, url, false).catch(fail);
       if (path === '/hooks/copilot' && req.method === 'POST') return void handleHook(req, res, url, true).catch(fail);
       if (path === '/api/statusline' && req.method === 'POST') return void handleStatusLine(req, res, url).catch(fail);
+      if (path === '/api/launcher' && req.method === 'POST') return void handleControl(req, res, url).catch(fail);
+      const stopMatch = path.match(/^\/api\/sessions\/([^/]+)\/home$/);
+      if (stopMatch && req.method === 'POST') return void handleControl(req, res, url, decodeURIComponent(stopMatch[1])).catch(fail);
+      if (path === '/api/robot' && req.method === 'GET') {
+        if (!tokenOk(req, url)) return json(res, 401, { error: 'Bad or missing token' });
+        const s = state.sessions.get(url.searchParams.get('sessionId') ?? '');
+        if (!s) return json(res, 404, { error: 'Session not observed yet' });
+        res.setHeader('X-Agent-Village-Robot-Name', encodeURIComponent(s.name));
+        res.setHeader('X-Agent-Village-Session-Id', encodeURIComponent(s.id));
+        return json(res, 200, { name: s.name });
+      }
       if (path === '/events' && req.method === 'GET') return handleEvents(req, res, url);
       if (path === '/api/health' && req.method === 'GET') {
         return json(res, 200, { ok: true, name: 'agent-village', version, approvals: state.approvals, sessions: state.sessions.size });
@@ -232,6 +285,6 @@ export function createApp(opts: AppOptions): Server {
       return send(res, 405, 'Method not allowed', 'text/plain');
     } catch (err) { fail(err); }
   });
-  server.on('close', () => { clearInterval(heartbeat); for (const c of clients) c.end(); clients.clear(); broker.cancelAll(); });
+  server.on('close', () => { clearInterval(controlTimer); clearInterval(heartbeat); for (const c of clients) c.end(); clients.clear(); broker.cancelAll(); });
   return server;
 }

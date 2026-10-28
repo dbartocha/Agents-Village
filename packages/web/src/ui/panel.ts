@@ -18,6 +18,8 @@ export class Panel {
   private logSig = '';
   private earnSig = '';
   private timeSig = '';
+  private readonly homeRequests = new Set<string>();
+  private readonly homeErrors = new Map<string, string>();
 
   private readonly app: App;
 
@@ -26,6 +28,7 @@ export class Panel {
     $('#pClose').addEventListener('click', () => app.select(null));
     $('#pFollow').addEventListener('click', () => app.setFollow(!app.following));
     $('#pStop').addEventListener('click', () => { if (this.robot) app.source.demo?.halt(this.robot.id); });
+    $('#pHome').addEventListener('click', () => { void this.goHome(); });
     $('#msgForm').addEventListener('submit', e => {
       e.preventDefault();
       const input = $<HTMLInputElement>('#msgInput');
@@ -101,11 +104,35 @@ export class Panel {
     $('#pStop').hidden = !demo;
     $<HTMLButtonElement>('#pStop').disabled = s.status === 'idle' || r.leaving;
     $('#pFollow').textContent = t(this.app.following ? 'unfollow' : 'follow');
+    const stopping = s.control?.status === 'stopping' || this.homeRequests.has(r.id);
+    const home = $<HTMLButtonElement>('#pHome');
+    home.textContent = t(stopping ? 'homeStopping' : 'goHome');
+    home.disabled = stopping || r.leaving || s.status === 'ended'
+      || (!demo && (!s.control || this.app.state !== 'live'));
+    $('#pHomeHint').textContent = t(stopping ? 'homePending' : demo || s.control ? 'homeReady' : 'homeUnavailable');
+    const error = this.homeErrors.get(r.id) ?? s.control?.error;
+    $('#pHomeError').hidden = !error;
+    $('#pHomeError').textContent = error ? t('homeFailed', { msg: error }) : '';
     this.renderAction(r);
     this.renderEarned(r);
     this.renderTiming(r);
     this.renderLog(r);
     this.tick();
+  }
+
+  private async goHome(): Promise<void> {
+    const r = this.robot;
+    const source = this.app.source;
+    if (!r || !source.goHome || this.homeRequests.has(r.id) || r.leaving
+      || (!source.demo && (!r.session.control || r.session.control.status !== 'ready'))) return;
+    const launcherId = r.session.control?.launcherId;
+    if (!window.confirm(t('homeConfirm', { name: r.name }))) return;
+    this.homeErrors.delete(r.id);
+    this.homeRequests.add(r.id);
+    this.render();
+    try { await source.goHome(r.id, launcherId); }
+    catch (error) { this.homeErrors.set(r.id, error instanceof Error ? error.message : String(error)); }
+    finally { this.homeRequests.delete(r.id); this.render(); }
   }
 
   /** Updates countdowns. Called a few times per second. */

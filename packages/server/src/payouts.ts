@@ -51,6 +51,12 @@ export class PayoutLedger {
     return { ...(this.days.get(day) ?? { day, tokens: 0, nanoAic: 0 }) };
   }
 
+  history(at: number): DailyPayouts[] {
+    const today = localDay(at);
+    return [...this.days.values()].filter(row => row.day < today)
+      .sort((a, b) => b.day.localeCompare(a.day)).map(row => ({ ...row }));
+  }
+
   /** The source reports a cumulative total; repeated and older checkpoints pay nothing. */
   pay(id: string, unit: PayoutUnit, total: number, at: number): number {
     if (!count(total) || !Number.isFinite(at) || !Number.isFinite(new Date(at).getTime())) throw new Error('Invalid payout amount or date');

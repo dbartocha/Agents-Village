@@ -173,6 +173,8 @@ export function totalTokens(u: TokenUsage | undefined): number {
 
 export interface SessionInfo {
   id: string;
+  /** Present only while a launcher is actively supervising this CLI session. No process IDs or secrets. */
+  control?: { launcherId: string; status: 'ready' | 'stopping'; error?: string };
   provider: Provider;
   name: string;
   f: boolean;
@@ -183,6 +185,8 @@ export interface SessionInfo {
   /** Display name from the status line, e.g. "Opus". */
   modelName?: string;
   usage?: TokenUsage;
+  /** Current task's observed start; cleared when the turn finishes. Not persisted across server runs. */
+  taskStartedAt?: number;
   /** Claude Code's own estimate of the session cost at list price (status line). */
   costUsd?: number;
   /** How full the context window is, 0–100 (status line). */
@@ -229,6 +233,13 @@ export type PayoutUnit = 'tokens' | 'nanoAic';
 export interface SessionEarnings { unit: PayoutUnit; total: number }
 export interface DailyPayouts { day: string; tokens: number; nanoAic: number }
 
+export const PAYOUT_INTERVAL_MS = 10 * 60_000;
+
+/** Completed ten-minute intervals of the current task; a clock rollback never makes it negative. */
+export function payoutPeriod(startedAt: number, now: number): number {
+  return Math.max(0, Math.floor((now - startedAt) / PAYOUT_INTERVAL_MS));
+}
+
 /** Local calendar date, deliberately not UTC: the bank's daily payout boundary. */
 export function localDay(at: number): string {
   const d = new Date(at);
@@ -236,7 +247,13 @@ export function localDay(at: number): string {
 }
 
 /** Provider limits and daily payouts are separate, with separate units. */
-export interface Bank { claude?: ClaudeBank; copilot?: CopilotBank; daily?: DailyPayouts }
+export interface Bank {
+  claude?: ClaudeBank;
+  copilot?: CopilotBank;
+  daily?: DailyPayouts;
+  /** Recorded days before daily.day, newest first; absent on older servers. */
+  history?: DailyPayouts[];
+}
 
 export interface Snapshot {
   protocol: number;

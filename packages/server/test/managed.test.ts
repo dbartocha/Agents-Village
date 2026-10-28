@@ -1,0 +1,50 @@
+import assert from 'node:assert/strict';
+import { randomUUID } from 'node:crypto';
+import { test } from 'node:test';
+import { ManagedSessions, ControlError } from '../src/managed.ts';
+import { VillageState } from '../src/state.ts';
+
+test('Go home requires a live owner, is idempotent and only ends after exit confirmation', () => {
+  let now = 100;
+  const state = new VillageState({ approvals: false, approvalTimeoutSec: 30, now: () => now });
+  state.handleHook({ hook_event_name: 'UserPromptSubmit', session_id: 'a', prompt: 'work' });
+  state.handleHook({ hook_event_name: 'SessionStart', session_id: 'b' });
+  const control = new ManagedSessions(state, () => now);
+  const body = { launcherId: randomUUID(), secret: 'a'.repeat(64), sessionId: 'a', phase: 'running' };
+  assert.throws(() => control.requestStop('a', body.launcherId), ControlError);
+  assert.equal(control.poll(body).stop, false);
+  assert.throws(() => control.poll({ ...body, secret: 'b'.repeat(64) }), /identity/);
+  assert.throws(() => control.poll({ ...body, launcherId: randomUUID() }), /another launcher/);
+  assert.throws(() => control.requestStop('b', body.launcherId), /No active launcher/);
+  control.requestStop('a', body.launcherId);
+  control.requestStop('a', body.launcherId);
+  assert.equal(state.sessions.get('a')!.status, 'thinking');
+  assert.equal(control.poll(body).stop, true);
+  assert.ok(!JSON.stringify(state.snapshot('test')).includes(body.secret));
+  control.poll({ ...body, phase: 'ended' });
+  assert.equal(state.sessions.get('a')!.status, 'ended');
+  assert.equal(state.sessions.get('a')!.control, undefined);
+  assert.equal(state.sessions.get('b')!.status, 'idle');
+});
+
+test('session switching cancels stale stop commands; expired or failed launchers do not fake exit', () => {
+  let now = 0;
+  const state = new VillageState({ approvals: false, approvalTimeoutSec: 30 });
+  for (const id of ['a', 'b']) state.handleHook({ hook_event_name: 'SessionStart', session_id: id });
+  const control = new ManagedSessions(state, () => now);
+  const body = { launcherId: randomUUID(), secret: 'a'.repeat(64), sessionId: 'a', phase: 'running' };
+  control.poll(body);
+  control.requestStop('a', body.launcherId);
+  assert.equal(control.poll({ ...body, sessionId: 'b' }).stop, false);
+  assert.equal(state.sessions.get('a')!.control, undefined);
+  assert.throws(() => control.requestStop('a', body.launcherId));
+  assert.throws(() => control.poll({ ...body, phase: 'ended' }), /changed/);
+  assert.equal(state.sessions.get('b')!.control?.launcherId, body.launcherId);
+  control.poll({ ...body, sessionId: 'b', phase: 'error', error: 'termination failed' });
+  assert.equal(state.sessions.get('b')!.control?.error, 'termination failed');
+  now += 8001;
+  control.expire();
+  assert.equal(state.sessions.get('b')!.control, undefined);
+  assert.equal(state.sessions.get('b')!.status, 'idle');
+  assert.throws(() => control.requestStop('b', body.launcherId));
+});

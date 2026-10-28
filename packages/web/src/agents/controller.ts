@@ -3,9 +3,10 @@
  * Also tells the town which stations are busy and keeps the short event feed.
  */
 import type { Activity, AgentKind, Bank, ServerMessage, SessionInfo, Text } from '../../../shared/src/index.ts';
+import { payoutPeriod } from '../../../shared/src/index.ts';
 import type { Mesh } from 'three';
 import type { Busy, Town } from '../world/town';
-import { flyCoins } from '../world/coins';
+import { clearCoins, flyCoins } from '../world/coins';
 import { burst } from '../world/particles';
 import { Robot } from './robot';
 import type { PopKind } from './robot';
@@ -50,6 +51,8 @@ export class Village {
   private readonly colorIdx: Record<AgentKind, number> = { claude: 0, copilot: 0 };
   private readonly pendingPayouts = new Map<Robot, Activity>();
   private readonly payoutsInFlight = new Set<Robot>();
+  private readonly payoutPeriods = new Map<Robot, { startedAt: number; period: number }>();
+  private background = false;
 
   private readonly town: Town;
   private readonly events: VillageEvents;
@@ -59,24 +62,58 @@ export class Village {
     this.events = events;
   }
 
+  setBackground(hidden: boolean): void {
+    this.background = hidden;
+    this.reconcile();
+  }
+
+  /** Animation is expendable; after a suspended frame loop show current state, not old tool visits. */
+  reconcile(): void {
+    clearCoins();
+    this.pendingPayouts.clear();
+    this.payoutsInFlight.clear();
+    for (const r of this.list()) {
+      if (r.session.status === 'ended' || r.leaving) this.remove(r);
+      else { r.sync(r.session); this.resetPayoutPeriod(r); }
+    }
+    this.events.changed();
+  }
+
   /** Applies one message from a source. The first snapshot places robots without walking. */
   apply(msg: ServerMessage): void {
     switch (msg.type) {
       case 'snapshot': {
+        clearCoins();
+        this.pendingPayouts.clear();
+        this.payoutsInFlight.clear();
         const snap = msg.snapshot;
         this.approvals = snap.approvals;
         this.bank = snap.bank ?? {};
         this.events.bank(this.bank);
         const ids = new Set(snap.sessions.map(s => s.id));
-        for (const r of [...this.robots.values()]) if (!ids.has(r.id)) r.leave();
+        for (const r of [...this.robots.values()]) if (!ids.has(r.id)) this.remove(r);
         for (const s of snap.sessions) {
           const known = this.robots.get(s.id);
-          if (known) { known.sync(s); continue; }
-          if (s.status === 'ended') continue;
+          if (s.status === 'ended') { if (known) this.remove(known); continue; }
+          if (known) {
+            known.sync(s);
+            known.log = known.log.filter(entry => entry.kind === 'say');
+            for (const a of snap.recent) if (a.sessionId === s.id) known.addLog({ kind: 'activity', a });
+            this.pendingPayouts.delete(known);
+            this.resetPayoutPeriod(known);
+            continue;
+          }
           const r = this.add(s);
           r.placeFromSession(s);
           for (const a of snap.recent) if (a.sessionId === s.id) r.addLog({ kind: 'activity', a });
         }
+        this.feedItems = [];
+        for (const a of snap.recent) {
+          if (this.robots.has(a.sessionId) && FEED_KINDS.has(a.kind) && !(a.kind === 'attention' && a.attention === 'idle')) {
+            this.pushFeed({ kind: 'activity', robotId: a.sessionId, a, fresh: false });
+          }
+        }
+        this.events.feed(this.feedItems);
         this.events.changed();
         break;
       }
@@ -84,11 +121,21 @@ export class Village {
         const { activity: a, session: s } = msg;
         let r = this.robots.get(s.id);
         if (!r) {
-          if (a.kind === 'session_end') break;
+          if (s.status === 'ended') break;
           r = this.add(s);
-          r.spawnAtFactory();
-          burst(r.x, 0.5, r.z, '#ffffff', 16, { speed: 2.2, up: 1.0, g: 0.6, life: 1.0, size: 0.16, lit: true, spread: 0.6, smoke: true });
+          if (this.background) r.placeFromSession(s);
+          else {
+            r.spawnAtFactory();
+            burst(r.x, 0.5, r.z, '#ffffff', 16, { speed: 2.2, up: 1.0, g: 0.6, life: 1.0, size: 0.16, lit: true, spread: 0.6, smoke: true });
+          }
           this.events.changed();
+        }
+        if (this.background) {
+          r.session = s;
+          r.addLog({ kind: 'activity', a });
+          if (s.status === 'ended') this.remove(r);
+          this.events.changed(r);
+          break;
         }
         r.onActivity(a, s);
         if (a.kind === 'earned' && (a.tokens || a.nanoAic)) {
@@ -105,7 +152,8 @@ export class Village {
         break;
       }
       case 'removed': {
-        this.robots.get(msg.sessionId)?.leave();
+        const r = this.robots.get(msg.sessionId);
+        if (r) { if (this.background) this.remove(r); else r.leave(); }
         break;
       }
       case 'bank': {
@@ -127,7 +175,7 @@ export class Village {
     const r = this.robots.get(sessionId);
     if (!r) return;
     r.addLog({ kind: 'say', who, text, at });
-    if (who === 'robot' && !quiet) r.cheer();
+    if (who === 'robot' && !quiet && !this.background) r.cheer();
     this.events.changed(r);
   }
 
@@ -135,10 +183,12 @@ export class Village {
 
   /** Removes every robot at once (switching between live and demo). */
   clear(): void {
+    clearCoins();
     for (const r of this.robots.values()) r.dispose();
     this.robots.clear();
     this.pendingPayouts.clear();
     this.payoutsInFlight.clear();
+    this.payoutPeriods.clear();
     this.feedItems = [];
     this.events.feed(this.feedItems);
     this.events.changed();
@@ -154,13 +204,24 @@ export class Village {
   /** Moves and poses every robot; returns how busy each station is for the town animation. */
   update(dt: number, t: number, camAz: number): Busy {
     const busy: Busy = { forge: 0, tower: 0, site: 0 };
+    if (this.background) return busy;
     for (const r of this.robots.values()) {
       r.update(dt, camAz);
       r.pose(t, dt);
-      // Finish queued work before rewarding the robot on its way back to the charger.
-      if (r.session.status === 'idle' && (r.homeBound || r.charging) && !r.leaving && !this.payoutsInFlight.has(r)) {
+      const startedAt = r.session.taskStartedAt;
+      let progress = this.payoutPeriods.get(r);
+      if (startedAt !== undefined && progress?.startedAt !== startedAt) {
+        progress = { startedAt, period: 0 };
+        this.payoutPeriods.set(r, progress);
+      }
+      const period = startedAt === undefined ? 0 : payoutPeriod(startedAt, Date.now());
+      const partial = (r.session.status === 'working' || r.session.status === 'thinking')
+        && progress !== undefined && period > progress.period;
+      const finished = r.session.status === 'idle' && (r.homeBound || r.charging);
+      if ((finished || partial) && !r.leaving && !this.payoutsInFlight.has(r)) {
         const payout = this.pendingPayouts.get(r);
         if (payout) {
+          if (partial && progress) progress.period = period;
           this.pendingPayouts.delete(r);
           this.payoutsInFlight.add(r);
           this.payOut(r, payout);
@@ -173,6 +234,12 @@ export class Village {
       }
     }
     return busy;
+  }
+
+  private resetPayoutPeriod(r: Robot): void {
+    const startedAt = r.session.taskStartedAt;
+    if (startedAt === undefined) this.payoutPeriods.delete(r);
+    else this.payoutPeriods.set(r, { startedAt, period: payoutPeriod(startedAt, Date.now()) });
   }
 
   /** The bank pays the robot: 6–12 coins fly from the bank, then "+18K" pops over its head. */
@@ -195,17 +262,21 @@ export class Village {
     const color = palette[this.colorIdx[agent]++ % palette.length];
     const r = new Robot(s, color, {
       onBuild: n => this.town.grow(n),
-      onGone: robot => {
-        this.pendingPayouts.delete(robot);
-        this.payoutsInFlight.delete(robot);
-        robot.dispose();
-        this.robots.delete(robot.id);
-        this.events.changed();
-      },
+      onGone: robot => this.remove(robot),
       onPop: (robot, key, kind) => this.events.pop(robot, key, kind),
     });
     this.robots.set(s.id, r);
+    this.resetPayoutPeriod(r);
     return r;
+  }
+
+  private remove(robot: Robot): void {
+    this.pendingPayouts.delete(robot);
+    this.payoutsInFlight.delete(robot);
+    this.payoutPeriods.delete(robot);
+    robot.dispose();
+    this.robots.delete(robot.id);
+    this.events.changed();
   }
 
   private pushFeed(item: FeedItem): void {

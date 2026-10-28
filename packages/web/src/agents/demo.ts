@@ -2,9 +2,9 @@
  * Demo source: six simulated agents (the scenes from the prototype) that produce the same
  * activities as real Claude Code sessions. Used when no server is running, or on request.
  */
-import { PROTOCOL_VERSION, ROBOT_NAMES, advanceTiming, localDay, newSessionTiming, stationForTool, totalTokens } from '../../../shared/src/index.ts';
+import { PROTOCOL_VERSION, ROBOT_NAMES, advanceTiming, localDay, newSessionTiming, payoutPeriod, stationForTool, totalTokens } from '../../../shared/src/index.ts';
 import type {
-  Activity, ActivityKind, AgentKind, Bank, Decision, Localized, PendingPermission, SessionInfo, Snapshot, Text,
+  Activity, ActivityKind, AgentKind, Bank, DailyPayouts, Decision, Localized, PendingPermission, SessionInfo, Snapshot, Text,
 } from '../../../shared/src/index.ts';
 import { pick, rint, rnd } from '../lib/util';
 import { tBoth } from '../ui/i18n';
@@ -153,6 +153,7 @@ interface DemoAgent {
   /** Tokens or nano-AIC already paid out by the bank. */
   earnedBase: number;
   nanoAic: number;
+  payoutPeriod: number;
 }
 
 export class DemoSource implements Source {
@@ -229,6 +230,11 @@ export class DemoSource implements Source {
     const month = new Date().toISOString().slice(0, 7);
     this.bank = {
       daily: { day: localDay(now), tokens: 0, nanoAic: 0 },
+      history: Array.from({ length: 7 }, (_, i) => {
+        const date = new Date(now);
+        date.setDate(date.getDate() - i - 1);
+        return { day: localDay(date.getTime()), tokens: rint(80_000, 900_000), nanoAic: rint(5000, 80_000) * 1e7 };
+      }),
       claude: {
         fiveHour: { usedPct: 38, resetsAt: now + 2.3 * 3600_000 },
         sevenDay: { usedPct: 59, resetsAt: now + 3.4 * 86_400_000 },
@@ -268,6 +274,17 @@ export class DemoSource implements Source {
     this.agents.clear();
   }
 
+  async goHome(id: string): Promise<void> {
+    const a = this.agents.get(id);
+    if (!a) throw new Error('Demo session no longer exists');
+    a.later = null;
+    a.s.status = 'ended';
+    a.s.currentTool = undefined;
+    a.s.pending = undefined;
+    this.emit(a, 'session_end', {});
+    this.agents.delete(id);
+  }
+
   async decide(sessionId: string, permissionId: string, decision: Decision): Promise<void> {
     const a = this.agents.get(sessionId);
     if (!a || a.state !== 'wait' || a.s.pending?.id !== permissionId) throw new Error('not waiting');
@@ -305,13 +322,20 @@ export class DemoSource implements Source {
 
   private tick(): void {
     if (this.bank.daily?.day !== localDay(Date.now())) {
-      this.bank.daily = { day: localDay(Date.now()), tokens: 0, nanoAic: 0 };
+      this.currentDay();
       this.sendBank();
     }
     const now = performance.now();
     const dt = Math.min(0.5, (now - this.last) / 1000);
     this.last = now;
     for (const a of this.agents.values()) {
+      if (a.s.taskStartedAt !== undefined && (a.s.status === 'working' || a.s.status === 'thinking')) {
+        const period = payoutPeriod(a.s.taskStartedAt, Date.now());
+        if (period > a.payoutPeriod) {
+          a.payoutPeriod = period;
+          this.payOut(a, true);
+        }
+      }
       if (a.later) {
         a.later.t -= dt;
         if (a.later.t <= 0) { const fn = a.later.fn; a.later = null; fn(); }
@@ -321,6 +345,16 @@ export class DemoSource implements Source {
         if (a.timer <= 0) this.completeStep(a);
       }
     }
+  }
+
+  private currentDay(): DailyPayouts {
+    const day = localDay(Date.now());
+    if (this.bank.daily?.day !== day) {
+      const rows = [...(this.bank.history ?? []), ...(this.bank.daily ? [this.bank.daily] : [])];
+      this.bank.daily = rows.find(row => row.day === day) ?? { day, tokens: 0, nanoAic: 0 };
+      this.bank.history = rows.filter(row => row.day < day).sort((a, b) => b.day.localeCompare(a.day));
+    }
+    return this.bank.daily;
   }
 
   private later(a: DemoAgent, sec: number, fn: () => void): void { a.later = { t: sec, fn }; }
@@ -343,13 +377,18 @@ export class DemoSource implements Source {
       s.costUsd = 0;
       s.contextPct = rnd(4, 9);
     }
-    const a: DemoAgent = { s, steps, si: 0, state: 'idle', timer: 0, later: null, earnedBase: 0, nanoAic: 0 };
+    const a: DemoAgent = { s, steps, si: 0, state: 'idle', timer: 0, later: null, earnedBase: 0, nanoAic: 0, payoutPeriod: 0 };
     this.agents.set(id, a);
     return a;
   }
 
   private act(a: DemoAgent, kind: ActivityKind, extra: Partial<Activity>, at = Date.now()): Activity {
     const activity: Activity = { seq: ++this.seq, at, sessionId: a.s.id, kind, ...extra };
+    if (a.s.status === 'idle' || a.s.status === 'ended') a.s.taskStartedAt = undefined;
+    else if (kind === 'prompt' || a.s.taskStartedAt === undefined) {
+      a.s.taskStartedAt = at;
+      a.payoutPeriod = 0;
+    }
     for (const k of Object.keys(activity) as Array<keyof Activity>) if (activity[k] === undefined) delete activity[k];
     a.s.updatedAt = at;
     return activity;
@@ -445,10 +484,10 @@ export class DemoSource implements Source {
     this.payOut(a);
   }
 
-  /** End of a turn: the bank pays the robot and the simulated limits move. */
-  private payOut(a: DemoAgent): void {
+  /** Pay new usage at the end of a turn or during a long task. */
+  private payOut(a: DemoAgent, partial = false): void {
     const b = this.bank;
-    if (a.s.provider === 'copilot') {
+    if (a.s.provider === 'copilot' && !partial) {
       if (b.copilot) { b.copilot = { ...b.copilot, used: Math.min(b.copilot.allowance ?? 300, b.copilot.used + 1), updatedAt: Date.now() }; this.sendBank(); }
     }
     const unit = a.s.provider === 'copilot' ? 'nanoAic' : 'tokens';
@@ -459,8 +498,7 @@ export class DemoSource implements Source {
     setTimeout(() => {
       if (!this.live || this.agents.get(a.s.id) !== a) return;
       a.s.earnings = { unit, total };
-      if (b.daily?.day !== localDay(Date.now())) b.daily = { day: localDay(Date.now()), tokens: 0, nanoAic: 0 };
-      b.daily[unit] += delta;
+      this.currentDay()[unit] += delta;
       this.emit(a, 'earned', unit === 'nanoAic' ? { nanoAic: delta } : { tokens: delta });
       const c = b.claude;
       if (unit === 'tokens' && c?.fiveHour && c.sevenDay) {

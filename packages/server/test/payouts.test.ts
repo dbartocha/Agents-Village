@@ -11,6 +11,26 @@ import { VillageState } from '../src/state.ts';
 const yesterday = new Date(2026, 9, 19, 23, 59).getTime();
 const today = new Date(2026, 9, 20, 0, 1).getTime();
 
+test('history returns all recorded previous days newest first, without exposing ledger objects', () => {
+  const ledger = new PayoutLedger();
+  assert.deepEqual(ledger.history(today), []);
+  const older = new Date(2026, 8, 30, 12).getTime();
+  const future = new Date(2026, 9, 21, 12).getTime();
+  ledger.pay('old', 'tokens', 12345, older);
+  ledger.pay('current', 'nanoAic', 9e9, today);
+  ledger.pay('previous', 'nanoAic', 1234567890123, yesterday);
+  ledger.pay('future', 'tokens', 8, future);
+  const expected = [
+    { day: localDay(yesterday), tokens: 0, nanoAic: 1234567890123 },
+    { day: localDay(older), tokens: 12345, nanoAic: 0 },
+  ];
+  assert.deepEqual(ledger.history(today), expected);
+  const history = ledger.history(today);
+  history[0].nanoAic = 0;
+  history.pop();
+  assert.deepEqual(ledger.history(today), expected);
+});
+
 test('daily payouts keep units separate and only pay cumulative increases', () => {
   const ledger = new PayoutLedger();
   assert.equal(ledger.earnings('unknown'), undefined);
@@ -38,6 +58,7 @@ test('atomic private ledger restores totals and replay high-water marks together
   t.after(() => rmSync(dir, { recursive: true, force: true }));
   const file = join(dir, 'payouts.json');
   const first = PayoutLedger.load(file);
+  first.pay('copilot:previous', 'nanoAic', 1234567890, yesterday);
   first.pay('copilot:one', 'nanoAic', 1555360500000, today);
   first.pay('claude:one', 'tokens', 6789, today);
   await first.save(file);
@@ -46,6 +67,9 @@ test('atomic private ledger restores totals and replay high-water marks together
   assert.doesNotMatch(saved, /prompt|transcript|cwd|model|tool/);
   const second = PayoutLedger.load(file);
   assert.deepEqual(second.daily(today), first.daily(today));
+  assert.deepEqual(second.history(today), first.history(today));
+  const resumed = new VillageState({ approvals: false, approvalTimeoutSec: 60, payouts: second, now: () => today });
+  assert.deepEqual(resumed.snapshot('test').bank.history, first.history(today));
   assert.equal(second.pay('copilot:one', 'nanoAic', 1555360500000, today), 0);
   assert.equal(second.pay('claude:one', 'tokens', 6789, today), 0);
   assert.equal(second.pay('copilot:one', 'nanoAic', 1556360500000, today), 1e9);
@@ -72,6 +96,7 @@ test('state broadcasts daily rollover and earnings without changing the working 
   state.checkpointTimings();
   const lastBank = messages.filter(m => m.type === 'bank').at(-1);
   assert.deepEqual(lastBank?.bank.daily, { day: localDay(today), tokens: 0, nanoAic: 0 });
+  assert.deepEqual(lastBank?.bank.history, [{ day: localDay(yesterday), tokens: 0, nanoAic: 20e9 }]);
   state.pay('copilot:a', 'nanoAic', 22e9);
   assert.equal(state.bank.daily?.nanoAic, 2e9);
   const resumed = new VillageState({ approvals: false, approvalTimeoutSec: 60, payouts: state.payouts, now: () => now });
@@ -81,4 +106,26 @@ test('state broadcasts daily rollover and earnings without changing the working 
   assert.equal(resumed.pay('copilot:a', 'nanoAic', 22e9), undefined);
   assert.equal(resumed.bank.daily?.nanoAic, 2e9);
   assert.throws(() => resumed.pay('copilot:a', 'tokens', 22e9), /Wrong payout unit/);
+});
+
+test('historical payouts broadcast without changing today and repeated reads do not rebroadcast', () => {
+  const state = new VillageState({ approvals: false, approvalTimeoutSec: 60, now: () => today });
+  state.handleHook({ hook_event_name: 'SessionStart', session_id: 'copilot:late' }, 'copilot');
+  const messages: ServerMessage[] = [];
+  state.subscribe(m => messages.push(m));
+  state.pay('copilot:late', 'nanoAic', 12e9, yesterday);
+  const banks = () => messages.filter(m => m.type === 'bank');
+  assert.equal(banks().length, 1);
+  assert.deepEqual(banks()[0].bank.daily, { day: localDay(today), tokens: 0, nanoAic: 0 });
+  assert.deepEqual(banks()[0].bank.history, [{ day: localDay(yesterday), tokens: 0, nanoAic: 12e9 }]);
+  state.pay('copilot:late', 'nanoAic', 15e9, yesterday);
+  assert.equal(banks().length, 2);
+  assert.equal(banks()[1].bank.history?.[0].nanoAic, 15e9);
+  state.pay('copilot:late', 'nanoAic', 15e9, yesterday);
+  state.checkpointTimings();
+  const snapshot = state.snapshot('test');
+  assert.equal(banks().length, 2);
+  assert.deepEqual(snapshot.bank.history, banks()[1].bank.history);
+  snapshot.bank.history![0].nanoAic = 0;
+  assert.equal(state.bank.history?.[0].nanoAic, 15e9);
 });

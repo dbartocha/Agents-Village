@@ -16,6 +16,7 @@
  */
 import { copyFileSync, existsSync, mkdirSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
 import { homedir } from 'node:os';
+import { randomUUID } from 'node:crypto';
 import { dirname, join, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import {
@@ -59,7 +60,7 @@ function writeSettings(file: string, settings: Settings): string | undefined {
   if (existsSync(file)) {
     const dir = join(configDir(), 'backups');
     mkdirSync(dir, { recursive: true });
-    backup = join(dir, `settings-${new Date().toISOString().replace(/[:.]/g, '-')}.json`);
+    backup = join(dir, `settings-${new Date().toISOString().replace(/[:.]/g, '-')}-${randomUUID()}.json`);
     copyFileSync(file, backup);
   }
   mkdirSync(dirname(file), { recursive: true });
@@ -76,6 +77,7 @@ function main(argv: string[]): number {
   // Copilot hooks are user-level only; a project install is about one Claude Code project.
   const doCopilot = only !== 'claude' && !readFlag(argv, '--project');
   const copilotFile = copilotHooksPath();
+  const copilotSettings = join(dirname(dirname(copilotFile)), 'settings.json');
   if (cmd === 'install') {
     const stored = loadStoredConfig();
     const port = Number(readFlag(argv, '--port') ?? stored.port ?? DEFAULT_PORT);
@@ -104,6 +106,13 @@ function main(argv: string[]): number {
       console.log('  Restart open Claude Code sessions (or run /hooks in them) so they pick up the change.');
     }
     if (doCopilot) {
+      if (!argv.includes('--no-statusline')) {
+        const r = addStatusLine(readSettings(copilotSettings), STATUSLINE_SCRIPT, true);
+        if (r.wrapped) saveStoredConfig({ ...loadStoredConfig(), wrappedCopilotStatusLine: r.wrapped });
+        const backup = writeSettings(copilotSettings, r.settings);
+        console.log(`  Copilot robot status line installed in ${copilotSettings}`);
+        if (backup) console.log(`  Backup of the previous file: ${backup}`);
+      }
       mkdirSync(dirname(copilotFile), { recursive: true });
       writeFileSync(copilotFile, JSON.stringify(copilotHooks(COPILOT_SCRIPT), null, 2) + '\n', 'utf8');
       console.log(`\n  GitHub Copilot hooks installed in ${copilotFile}`);
@@ -130,6 +139,14 @@ function main(argv: string[]): number {
       }
     }
     if (doCopilot) {
+      const before = readSettings(copilotSettings);
+      if (isVillageStatusLine(before.statusLine)) {
+        const stored = loadStoredConfig();
+        writeSettings(copilotSettings, removeStatusLine(before, stored.wrappedCopilotStatusLine));
+        const { wrappedCopilotStatusLine: _w, ...rest } = stored;
+        saveStoredConfig(rest);
+        console.log('  Copilot status line restored.');
+      }
       if (existsSync(copilotFile)) { rmSync(copilotFile); console.log(`  GitHub Copilot hooks removed (${copilotFile})`); }
       else console.log('  No GitHub Copilot hooks from Agent Village. Nothing to do.');
     }
@@ -146,6 +163,7 @@ function main(argv: string[]): number {
     const ours = isVillageStatusLine(settings.statusLine);
     console.log(`  Status line: ${ours ? 'installed' + (wrapped ? ` (wraps: ${wrapped.command ?? ''})` : '') : settings.statusLine ? 'another one (the bank gets no model, cost or limits)' : 'not installed'}`);
     console.log(`  GitHub Copilot: ${existsSync(copilotFile) ? 'installed (' + copilotFile + ')' : 'not installed'}\n`);
+    console.log(`  Copilot robot status line: ${isVillageStatusLine(readSettings(copilotSettings).statusLine) ? 'installed' : 'not installed'}`);
     return 0;
   }
   console.log('Usage: node scripts/hooks.ts <install|uninstall|status> [--approvals] [--port 4747] [--project <folder>] [--only claude|copilot] [--claude|--copilot] [--no-statusline]');

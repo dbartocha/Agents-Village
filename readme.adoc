@@ -53,7 +53,7 @@ The town is a round island. A fountain sits on the plaza in the middle, a ring r
 | Plaza (fountain) | everything else (`TodoWrite`, MCP tools, `Task`…) and "thinking" right after a prompt | Works on a tablet next to the fountain.
 | Charging station | — | A robot whose turn has finished stands on a pad and charges (sleepy eyes, green antenna light).
 | Factory | — | New sessions roll out of its door. Ended sessions walk back in.
-| Bank (columns, coin on the roof, two glass vaults) | — | Not a work station. Pays robots in coins at the end of each turn and shows how much of each limit is left. See <<bank>>.
+| Bank (columns, coin on the roof, two glass vaults) | — | Not a work station. Pays robots every ten minutes during long tasks and at the end of each turn; shows how much of each optional limit is left. See <<bank>>.
 |===
 
 === Robot colours
@@ -70,17 +70,22 @@ Robots of the same agent get different shades of its family, so they stay easy t
 
 The bank pays the robots for their work. These figures are deliberately separate:
 
-* *Earned*: each robot's cumulative session payouts, shown in a compact gold coin badge below its name and in its panel. The badge shows just the amount and unit; its tooltip explains that this is the session's earnings. *Claude* earns tokens (input, output, cache write and cache read), paid at the end of a turn from its transcript. The panel separately shows currently read token usage, Claude Code's estimated dollar cost and context fill. *Copilot CLI* earns AIC from locally saved cumulative usage checkpoints (see <<copilot-aic>>), displayed to two decimal places. Coins and feed entries use the matching unit; the number of animated coins is cosmetic.
+* *Earned*: each robot's cumulative session payouts, shown in a compact gold coin badge below its name and in its panel. The badge shows just the amount and unit; its tooltip explains that this is the session's earnings. *Claude* earns tokens (input, output, cache write and cache read), paid at the end of a turn and every ten minutes during long tasks from its transcript. The panel separately shows currently read token usage, Claude Code's estimated dollar cost and context fill. *Copilot CLI* earns AIC from locally saved cumulative usage checkpoints (see <<copilot-aic>>), displayed to two decimal places. Coins and feed entries use the matching unit; the number of animated coins is cosmetic.
 * *Paid out today*: the bank label, HUD chip and bank card show *Claude tokens* and *Copilot AIC* separately for the server's local calendar day. They are not converted or added into a single mixed-unit total. This needs no billing token or allowance setting. It covers tracked sessions, not all account or organisation usage.
 * *What is left* of each provider's limit, in two glass vaults on the sides of the bank. Seen from the town centre, the left vault is Claude (accent `#d97757`), the right one Copilot (accent `#8b5cf6`).
 ** Claude: the coins show what is left of the 5-hour window; a thin ring marks what is left of the weekly window. From the Claude Code status line (Pro and Max plans only, after the first answer).
 ** Copilot: `1 - used / allowance` of this month's premium requests, from the GitHub billing API (`pnpm copilot:setup`, see <<copilot>>).
 ** Unknown: an empty grey vault.
 
-A label above the bank and the chip next to the counters open the *bank card*: today's payouts first, then optional account limits, reset times and the estimated cost of live Claude sessions. Clicking the building does the same. Grey vaults do not prevent daily payouts from working.
+A label above the bank and the chip next to the counters open the *bank card*: today's payouts first, previous days' payout history, then optional account limits, reset times and the estimated cost of live Claude sessions. Clicking the building does the same. Grey vaults do not prevent daily payouts from working.
+History lists all recorded dates before today, newest first, in a scrollable table with separate Copilot AIC and Claude token columns. Full Claude token counts are available in tooltips. Existing ledger days appear automatically; missing dates are not filled with invented zero usage. History updates live, including late Copilot checkpoints and midnight rollover, and survives restarts. Older servers show an explicit history-unavailable message. The demo includes seven simulated previous days, never mixed with the live ledger.
 The floating bank label has a small *Today* heading and two aligned rows: `Claude <tokens>` and `Copilot <AIC>`. It no longer puts a combined amount above empty provider-limit rows. Optional quotas remain in the bank card and the glass vaults.
 
-Accounting totals still update as soon as usage arrives, but *the coin reward waits for the end of work*: `earned` updates accumulate while a robot works or needs input. Once its session is idle and it has finished its queued work animation, one batch of gold coins flies from the bank to it as it heads back to the charger (or while already parked). After every coin arrives, the robot cheers, its earnings badge glows and a gold `+amount` popup appears above its name, without covering its earnings. Delayed usage received after the turn also triggers a reward; reconnect snapshots never replay historical payouts. Switching modes or removing the robot clears pending visual rewards without changing the durable ledger.
+Accounting totals update when new usage is paid. *Long tasks automatically receive partial rewards every ten minutes*: while thinking or working, pending gold coins fly to the robot at its current station, its earnings badge glows and a gold `+amount` popup appears, without interrupting its work or sending it to the charger. Short tasks still wait for completion: once idle and done with its queued work animation, the robot receives its remaining coins and cheers on the way back to the charger (or while already parked). Earlier partial payments are never counted twice.
+
+The interval is wall time from the current prompt, or the first observed active event if the prompt was missed. Permission/question states defer a due partial reward until work resumes; idle and ended sessions do not receive periodic payments. Claude transcripts are reread on the server's 5-second poll when a ten-minute interval is due, even without new hooks. Copilot AIC accounting continues to refresh on hooks and every 5 seconds, while its pending visual coins are batched at ten-minute boundaries. Both require actual saved usage: no estimated or invented earnings when the agent has not written new data. A delayed checkpoint can postpone a partial reward. Multiple missed intervals produce one batch, not a burst of replayed animations.
+
+Delayed usage received after the turn also triggers a reward; reconnect snapshots never replay historical payouts, and a freshly connected browser starts partial animations at the next task interval. Switching modes or removing the robot clears pending visual rewards without changing the durable ledger. The task's interval anchor is in memory only and starts from the next observed activity after a server restart; saved earnings and payout history remain intact. Demo tasks follow the same partial-payment rules without touching live records.
 
 Daily history and each session's cumulative high-water mark are saved together to `~/.agent-village/payouts.json` (or `AGENT_VILLAGE_HOME`), atomically with mode 600 every 5 seconds and on graceful shutdown. Restarting the server or rereading a transcript does not pay the same cumulative amount twice. Startup fails on a corrupt ledger instead of discarding it; save errors are reported in the server terminal. No prompts, paths or transcript content are saved in this ledger. Demo payouts never touch it.
 
@@ -123,7 +128,7 @@ Demo counters start with the simulation, follow its state changes, and are never
 
 == Quick start for everyone (no programming needed)
 
-This takes about 10 minutes the first time. You need a Windows, macOS or Linux computer with Claude Code already working.
+This takes about 10 minutes the first time. You need a Windows, macOS or Linux computer with Claude Code or GitHub Copilot CLI already installed and signed in. The demo needs neither agent.
 
 . *Install Node.js.* Go to https://nodejs.org, download the version marked *LTS* and install it with the default options.
 . *Install pnpm.* Open a terminal (Windows: press kbd:[Win], type `PowerShell`, press kbd:[Enter]) and type:
@@ -141,7 +146,7 @@ npm install -g pnpm
 pnpm first-run
 ----
 +
-This downloads the parts the town needs, builds it and connects Claude Code and GitHub Copilot to it (it adds hooks and a status line to your Claude Code settings, with a backup saved first, and one hooks file for Copilot in `~/.copilot/hooks/`). A status line you already had keeps showing.
+This downloads the parts the town needs, builds it and connects Claude Code and GitHub Copilot to it. It installs hooks and robot-name status lines for both CLIs, backing up changed settings first; Copilot hooks live in `~/.copilot/hooks/`. A status line you already had keeps showing beside the robot name.
 +
 NOTE: Type `first-run`, not `setup`: `pnpm setup` is a built-in pnpm command that does something else.
 . *Start the town:*
@@ -163,6 +168,85 @@ To stop the town, press kbd:[Ctrl+C] in its terminal. To disconnect Claude Code 
 
 Optional: to fill the Copilot vault of the bank with this month's premium requests, follow <<copilot-vault>>.
 
+=== Sharing with a team and updating
+
+The repository is private: each teammate needs GitHub access to https://github.com/dbartocha/Agents-Village before cloning. Each person runs their own village on their own computer; this is not a shared team dashboard. Do not copy `~/.agent-village`, agent settings, tokens or session history to teammates, and do not expose port {server-port} to the network.
+
+For a fresh clone, with Node.js {node-min}+ and pnpm {pnpm-ver} available:
+
+[source,shell]
+----
+git clone https://github.com/dbartocha/Agents-Village.git
+cd Agents-Village
+pnpm first-run
+pnpm start
+----
+
+Keep that server running. In another terminal, open the project you actually want an agent to work on. For a robot-name status line only, run `copilot` or `claude` normally. For terminal-title synchronization and *Go home* control on macOS/Linux, run:
+
+[source,shell]
+----
+node "/absolute/path/to/Agents-Village/scripts/agent.ts" copilot
+# or:
+node "/absolute/path/to/Agents-Village/scripts/agent.ts" claude
+----
+
+Replace the path with your own clone. Native Windows supports the town and CLI status lines, but the launcher and Go home require WSL. The optional VS Code profiles described below are personal settings, not included in the repository.
+
+To update an existing installation, save any local edits and stop its server with kbd:[Ctrl+C] first. Then, in the village repository:
+
+[source,shell]
+----
+git pull --ff-only
+pnpm install
+pnpm build
+pnpm hooks:install
+pnpm start
+----
+
+Restart CLI sessions to load updated hooks/settings and reload the browser. The bank ledger and session timing history stay in `~/.agent-village` and are preserved across updates. A GitHub billing token is *not* required for robot tracking, daily payouts or local Copilot AIC.
+
+=== Robot names on VS Code terminal tabs (optional)
+
+On macOS or Linux, start the CLI through the village launcher:
+
+[source,shell]
+----
+pnpm agent copilot
+pnpm agent claude
+# CLI options are passed through unchanged, for example:
+pnpm agent copilot --resume
+----
+
+Run these commands in the repository folder, or use `node "/absolute/path/to/Agents-Village/scripts/agent.ts" copilot` from any project. The CLI keeps the terminal's working directory, interactive input, permissions and exit code. This is a terminal launcher, not the web town's planned "New robot" feature.
+
+In VS Code settings set `"terminal.integrated.tabs.title": "${sequence}"` (its default shows the process name instead). Optionally add terminal profiles with `path` set to your Node executable (`node -p process.execPath` prints it), `args` set to `["/absolute/path/to/Agents-Village/scripts/agent.ts", "copilot"]` (or `"claude"`) and `overrideName: false`. On macOS these go under `terminal.integrated.profiles.osx`; on Linux under `terminal.integrated.profiles.linux`. Name them *Agent Village - Copilot* and *Agent Village - Claude*, then choose one from the arrow beside the terminal's *+* button. These are personal settings with machine-specific paths: the author's profiles live outside this repository and are not installed by cloning it.
+
+The tab becomes, for example, *Atlas · Copilot*, using the actual name assigned by the running village, never guessing from the project directory. Copilot synchronizes on hooks; Claude synchronizes when the village status line runs (which may be after the first response). Start the village and install its hooks/status line first. Restart a server started before this feature. Session switches and later server-assigned names update on the next hook/status-line response; multiple terminals stay independent.
+
+Only the launched CLI has its automatic title updates disabled (`COPILOT_DISABLE_TERMINAL_TITLE=1` or `CLAUDE_CODE_DISABLE_TERMINAL_TITLE=1`). Claude's variable also disables its automatic session-title generation and terminal status reports; explicit CLI session names are not changed by the village. Normal `copilot` / `claude` commands are unchanged. The launcher clears its title when the CLI exits. Existing terminals are not retroactively renamed, manually pinned VS Code tab names override escape-sequence titles, and VS Code Chat (without a terminal) is unaffected. Windows users can use WSL; native Windows launch is not supported.
+
+The authenticated hook/status-line response includes the URL-encoded robot name in `X-Agent-Village-Robot-Name`; response bodies and approval handling are unchanged. The forwarder sends the title and session ID through a launcher-specific Unix socket in a private temporary directory. No prompts, tokens or history are sent through that socket or saved there. Control characters and oversized titles are rejected; the socket is removed on normal exit. Hooks remain bounded and non-bLOCking on errors. If no title arrives within 15 seconds, the launcher prints a setup warning but leaves the CLI running.
+
+=== Robot names inside the CLI
+
+`pnpm hooks:install` installs a robot-name status line for *both* Claude Code and Copilot CLI. It shows, for example, `Atlas · Agents Village | Opus · ctx 23%`, independently of the terminal title or launcher. Both status lines refresh every five seconds as well as on CLI events. Names are looked up by the current session ID, never by the project folder. Copilot's status data is never applied to the Claude bank.
+
+The existing status line is preserved and displayed after the robot label; uninstall restores it. Claude's original is kept as `wrappedStatusLine`, Copilot's as `wrappedCopilotStatusLine` in the village's private configuration. Copilot's user settings are `COPILOT_HOME/settings.json` (default `~/.copilot/settings.json`); the installer backs them up before changing them. The installer requires valid JSON and refuses unsupported JSONC rather than overwriting it. `--no-statusline` skips both installations; `--project` still installs Claude only.
+
+The CLI must support command status lines (confirmed in the installed Copilot CLI via `copilot help config`). Restart existing CLI sessions if they do not reload the configuration. The server must have observed a hook for the session; an unavailable name is explicitly labelled `Agents Village: unavailable`. Lookups have a 300 ms timeout and cannot hold up an agent. The status label does not rename conversation history or change model instructions.
+
+=== Go home: end a supervised CLI session
+
+The robot panel has *Go home — end session* / *Do domu — zakończ sesję*. After confirmation it requests termination immediately; the launcher checks for commands every second, sends SIGTERM to its CLI and observed descendants, and escalates to SIGKILL after roughly one second if needed. The robot leaves only when the session ends, not merely when the button is clicked. The panel shows pending termination and errors.
+
+This requires a session launched through `pnpm agent copilot`, `pnpm agent claude` or the existing Agent Village terminal profiles. Ordinary CLI launches can show the status-line name but remain watch-only: the disabled button explains how to launch a controllable session. Existing terminals cannot safely be adopted by guessing a PID. Native Windows supervision is not supported; use WSL.
+
+The operation ends the *whole supervised CLI process*, including any other conversations/tasks it hosts, not the terminal application or unrelated agents. It does not erase conversation history, undo edits, or roll back external effects. Interrupted work can leave incomplete files; remote operations and already detached/reparented processes may continue.
+
+The private title bridge also carries the authenticated response's `X-Agent-Village-Session-Id`. The launcher uses a per-run identity and secret to poll the loopback server; no PID, command, secret or socket path is exposed to the browser. The browser requests shutdown of the session's current launcher only. Session switches invalidate the old binding and its queued command. Missing heartbeats expire control after eight seconds; they never pretend the CLI exited. Server restart requires the session to be observed again before control can resume. Demo mode simulates confirmed departure without touching any processes.
+`packages/server/src/managed.ts` owns these in-memory bindings; `scripts/process-tree.ts` performs bounded termination. During a requested shutdown, an early `SessionEnd` hook does not remove the robot before the launcher's process-exit confirmation.
+
 === Approving requests from the town (optional, experimental)
 
 By default the town only watches: when a robot waves, you answer in the Claude Code terminal as usual.
@@ -180,13 +264,13 @@ and restart the town with `pnpm start`. When Claude Code asks for a permission, 
 .Requirements
 * Node.js *{node-min} or newer* (the server runs TypeScript directly through Node's built-in type stripping).
 * pnpm {pnpm-ver} (`npm install -g pnpm` or `corepack enable`).
-* Claude Code with HTTP hook support, for live data. The demo works without it.
+* Claude Code with HTTP hook support or GitHub Copilot CLI, for live data. The demo works without either.
 
 [source,shell]
 ----
 pnpm install          # dependencies for the web town and type checking
 pnpm dev              # server on :4747 (auto-restart) + Vite on :5173 with hot reload
-pnpm hooks:install    # connect Claude Code to the local server (user settings)
+pnpm hooks:install    # connect both CLIs and install robot-name status lines (user settings)
 ----
 
 Open `http://localhost:{dev-port}` during development. Vite proxies `/events` and `/api` to the server.
@@ -200,11 +284,12 @@ Open `http://localhost:{dev-port}` during development. Vite proxies `/events` an
 | `pnpm start` | Starts the server and opens the built town in the browser.
 | `pnpm serve` | Starts the server without opening a browser.
 | `pnpm dev` | Server with `--watch` plus the Vite dev server.
+| `pnpm agent <copilot\|claude> [CLI arguments...]` | Starts a CLI, synchronizes its terminal title and enables confirmed Go home shutdown (macOS/Linux; opt-in).
 | `pnpm build` | Builds the town into `packages/web/dist` (served by the server).
 | `pnpm test` | All tests (`node --test`, no extra test framework).
 | `pnpm typecheck` | TypeScript checks for every package.
 | `pnpm check` | `test` + `typecheck` + `build`. Run before every commit.
-| `pnpm hooks:install [--approvals] [--port N] [--project DIR] [--claude\|--copilot] [--no-statusline]` | Adds the hooks and the status line to Claude Code settings and writes the Copilot hooks file (Copilot is skipped with `--project`). `--claude` / `--copilot` (same as `--only claude\|copilot`) do one side only.
+| `pnpm hooks:install [--approvals] [--port N] [--project DIR] [--claude\|--copilot] [--no-statusline]` | Installs hooks and robot-name status lines for both CLIs (Copilot is skipped with `--project`). `--claude` / `--copilot` (same as `--only claude\|copilot`) do one side only.
 | `pnpm hooks:uninstall [--project DIR] [--claude\|--copilot]` | Removes only the hooks this project added, puts your previous status line back, and deletes the Copilot hooks file.
 | `pnpm hooks:status [--project DIR]` | Shows which hooks and which status line are installed.
 | `pnpm copilot:setup --user NAME [--allowance 300]` | Connects the Copilot vault to your GitHub account (asks for the token without showing it). `--off` forgets account and token.
@@ -239,6 +324,8 @@ agent-village/
 │   ├── hooks.ts                ← CLI: install / uninstall / status of Claude Code and Copilot hooks
 │   ├── copilot-hook.ts         ← command hook run by GitHub Copilot; forwards each event to the server
 │   ├── statusline.ts           ← Claude Code status line: prints the line, posts the JSON to the server
+│   ├── agent.ts                ← opt-in CLI launcher with robot-named terminal tabs
+│   ├── terminal-title.ts       ← private local title bridge for launcher and forwarders
 │   ├── copilot-setup.ts        ← pnpm copilot:setup (GitHub account and token for the Copilot vault)
 │   └── dev.ts                  ← runs server + Vite together
 ├── prototype/
@@ -331,6 +418,9 @@ One agent session (`session_id`) = one robot. Copilot session ids get the prefix
 The *bank* (`Bank`) has `claude` (`fiveHour` and `sevenDay` windows with `usedPct` 0–100 and `resetsAt` in epoch milliseconds, an optional `spend` limit, `updatedAt`) and `copilot` (`used`, `allowance`, `month` like `2026-10`, `updatedAt`, and `error` when the last check failed; `updatedAt: 0` means it never worked yet).
 
 Additive protocol-2 payout fields: `SessionInfo.earnings` is `{ unit: 'tokens' | 'nanoAic', total }`, optionally accompanied by `earningsError`. `Bank.daily` is `{ day: 'YYYY-MM-DD', tokens, nanoAic }`. Amounts are nonnegative safe integers; one AIC is `1_000_000_000` nano-AIC. An `earned` activity carries either `tokens` or `nanoAic`, never a mixed amount. Unknown session earnings remain absent.
+`Bank.history` is an additive array of the same daily records, containing all recorded days before `Bank.daily.day`, newest first. An empty array means no previous days are saved; an absent field means the server does not expose history. Both snapshots and bank events include it, without session IDs or other ledger internals.
+`SessionInfo.taskStartedAt` is the additive, optional observed start of the current task in epoch milliseconds. It resets with a prompt and is cleared when idle or ended. It synchronizes the ten-minute partial reward schedule between live/demo data and the browser.
+`SessionInfo.control` is an additive, optional `{ launcherId, status: 'ready' | 'stopping', error? }` capability. It is absent for ordinary launches and expired launcher connections. It contains no process ID or launcher secret.
 
 `status` is one of: `idle` (turn finished, waiting for your next prompt), `thinking` (between steps), `working` (a tool is running), `waiting` (needs a permission), `asking` (asked you a question), `ended`.
 
@@ -392,6 +482,9 @@ node packages/server/src/index.ts [--port 4747] [--host 127.0.0.1] [--approvals 
 | GET | `/api/state` | `?token=` | Current snapshot as JSON.
 | POST | `/api/permissions/:id` | token header | Body `{"decision":"allow"\|"deny"}`. Answers a held `PermissionRequest`. `409` when it is no longer waiting.
 | GET | `/api/health` | none | `{ ok, name, version, approvals, sessions }`. Used by the town to detect the server.
+| GET | `/api/robot?sessionId=<id>` | token header | Name of an already observed session, including robot-name and session-ID headers; used by the Copilot status line.
+| POST | `/api/launcher` | token header + per-run secret | Launcher heartbeat, session binding, pending shutdown command and confirmed exit/error.
+| POST | `/api/sessions/:id/home` | token header + Origin check | Requests shutdown only through the session's current, live launcher; `202` means requested, not exited.
 | GET | everything else | none | The built town from `packages/web/dist`, with the token injected into `index.html`.
 |===
 
@@ -406,6 +499,7 @@ The server can approve commands on your computer, so it is locked down:
 * Every request must have a `Host` header of `localhost`, `127.0.0.1` or `[::1]` (or one listed in `AGENT_VILLAGE_ALLOWED_HOSTS`). This blocks DNS-rebinding attacks from websites.
 * Hooks and the API require the random token from `~/.agent-village/config.json`. The page gets it injected by the server; other websites cannot read it because the server sends no CORS headers.
 * `POST /api/permissions` also rejects foreign `Origin` headers.
+* Launcher and Go home POSTs also reject foreign origins. The server accepts no browser-supplied PIDs or commands. Launcher secrets are memory-only and never sent in snapshots. Only the launcher signals its own CLI and observed descendants, checking process start identity before later escalation.
 * The page is served with a strict Content Security Policy (`default-src 'self'`). Fonts are bundled; the town loads nothing from the internet.
 * Prompts, paths and commands stay in memory only and are never written to disk.
 * *Session timing.* Only IDs, timestamps and aggregate work/wait/idle durations are stored in the private local `session-times.json` file (see <<session-time>>). Historical sessions are not restored as active robots until a new hook arrives.
@@ -449,7 +543,7 @@ WARNING: Do not expose the port to your network or the internet. To use a tablet
 { "statusLine": { "type": "command", "command": "node \"<repo>/scripts/statusline.ts\"" } }
 ----
 
-* Claude Code runs it after each answer and passes JSON on stdin. The script prints the status line first (default: `Opus · ctx 23% · 5h 38% · 7d 59%`), then posts the same JSON to `POST /api/statusline` (300 ms timeout). It never fails, hangs or prints errors.
+* Claude Code passes JSON on stdin. The script posts it to `POST /api/statusline` (300 ms timeout), obtains the robot name and prints it beside the existing/default line (`Atlas · Agents Village | Opus · ctx 23% · 5h 38% · 7d 59%`). Offline it keeps the original line with an explicit unavailable-name label. Both CLI installers set a five-second status-line refresh interval.
 * Fields used (checked at https://code.claude.com/docs/en/statusline on 2026-10-20): `session_id`, `model.id`, `model.display_name`, `cost.total_cost_usd`, `context_window.used_percentage`, `rate_limits.five_hour` / `seven_day` / `spend_limit` with `used_percentage` (0–100) and `resets_at` (epoch seconds). `rate_limits` appear only on Pro and Max plans (or with a spend limit) and only after the first answer; every part may be missing.
 * *Your own status line is kept.* If the settings file already had one, it is saved as `wrappedStatusLine` in `~/.agent-village/config.json`; the script runs it with the same input (1 s timeout) and prints its output instead of the default line. `pnpm hooks:uninstall` puts it back. Ours is recognised by the path `scripts/statusline.ts`.
 * Claude Code picked up a newly installed status line in a running session in our test; if yours does not, restart the session.
@@ -526,12 +620,13 @@ NOTE: Checked against the Copilot CLI hooks reference (https://docs.github.com/e
 * *Pacing.* Real agents run tools in milliseconds, so each robot has a queue of *beats*. Consecutive steps at the same station merge into one visit. A beat lasts 1.7 s (1.2 s for thinking), down to 0.5 s when the queue grows; walking speeds up too. While a tool is still running (a long build, a long search), the robot keeps working at that station. After a tool, a robot that is still "thinking" walks to the fountain after a few seconds.
 * *Attention first.* A permission request or a question clears the robot's queue: it walks straight to the station of the tool in question and waves (! or ?). The bubble, counters and queue chips appear at once, even while it walks.
 * *Real data in the panel.* The panel's "Now" line, the request box, the *Earned* section and the log always show the real current state, not the animation.
-* *Bank.* `world/town.ts` builds the bank at 10° on the outer ring (cream walls, gold-brown pediment, four columns, steps, a coin sign in front and a big coin turning on the roof) with the two glass vaults; `setVaults()` sets their fill and the coins move there smoothly. The controller batches visual rewards until the robot finishes its queued work and heads back to the charger. `world/coins.ts` flies staggered coins along an arc (~1.4 s per coin) to wherever the robot is when they land, and completes only after all coins arrive. `ui/bank.ts` owns the label above the bank, the HUD chip (hidden on phones) and the bank card. Numbers use `Intl.NumberFormat` compact notation in the UI language ("18 tys." / "18K").
+* *Bank.* `world/town.ts` builds the bank at 10° on the outer ring (cream walls, gold-brown pediment, four columns, steps, a coin sign in front and a big coin turning on the roof) with the two glass vaults; `setVaults()` sets their fill and the coins move there smoothly. The controller batches visual rewards every ten minutes of an ongoing task and pays the remainder when the robot finishes its queued work and heads back to the charger. `world/coins.ts` flies staggered coins along an arc (~1.4 s per coin) to wherever the robot is when they land, and completes only after all coins arrive. `ui/bank.ts` owns the label above the bank, the HUD chip (hidden on phones) and the bank card. Numbers use `Intl.NumberFormat` compact notation in the UI language ("18 tys." / "18K").
 * *Feed and queue chips.* Each line is short enough for its bar: shell commands show only their first command (`git add readme.adoc …`), paths only their last two folders, URLs only host and path (`shortTarget` in `ui/format.ts`). The full text is in the tooltip, and a click opens the robot's panel. Lines and chips are updated in place instead of being rebuilt, because live agents send several events per second and a rebuilt element would swallow the click.
 * *Floating labels.* Robot names and the bank label use 2D positioning, with their top-left corner snapped to physical pixels after centering (including Retina displays). They do not force separate compositor layers, keeping small text sharp while the labels follow the scene.
 * *Live and demo.* On start the page reads the token from `<meta name="agent-village-token">` (the server fills it in) and calls `/api/health`. If both work, it connects to `/events`; otherwise it starts the demo and says so in the feed. The *Live / Demo* switch changes source at any time; `?demo` in the URL forces the demo. Both sources speak the same `ServerMessage` format (`agents/source.ts`).
 * *Demo bank.* Claude robots simulate tokens, models, costs and limits; Copilot robots simulate AIC, without a token breakdown. Both pay at the end of simulated turns, update daily totals and show lifetime earnings. The optional premium-request vault is also simulated. None of these numbers are persisted or mixed with live payouts.
-* *What only the demo can do.* Answering questions, messages, *Stop* and *New robot* are simulated in the demo. Live, the panel shows the request and tells you to answer in the terminal, except permissions with approvals on (see <<hooks>>). Steering live agents is stage 3.
+* *Background tabs.* The server continues collecting hooks and usage independently of the browser. SSE continues updating session data when browser scheduling allows, but hidden tabs never accumulate animation beats or payout effects. Returning to the tab, restoring it from the back/forward cache, or resuming after a frame gap longer than five seconds reconnects SSE for an authoritative snapshot. Robots immediately reconcile position, attention and idle/work state; stale movement callbacks, queued steps and coin animations are discarded. Logs and bank totals come from current state, not replayed history. Browsers can freeze hidden pages entirely; JavaScript cannot force execution then, so return-time reconciliation is required.
+* *What only the demo can do.* Answering questions, messages, *Stop* and *New robot* are simulated in the demo. *Go home* works for supervised live CLI launches as described above; ordinary live agents remain watch-only. Permissions with approvals on can still be answered from the town (see <<hooks>>).
 * *Language.* English and Polish, chosen from the browser language and remembered in `localStorage`. Demo texts are stored in both languages, so switching also changes what is already on screen.
 * *Prototype.* `prototype/agent-village-prototype.html` is the original single-file version that defined the look. Keep it as a reference; do not develop it further.
 
@@ -566,6 +661,13 @@ This section is the hand-over point between work sessions. Keep it current.
 
 === Done
 
+* Team handoff instructions (2026-10-28): private-repository access, fresh installation, safe updates, per-computer data, optional launcher usage and platform limits are documented above. Personal VS Code profiles and credentials are not shipped with the repository.
+
+* CLI identity, supervised exit and hidden-tab recovery (2026-10-28): both command status lines display the server-assigned robot name without renaming conversation history. The panel can request and confirm shutdown of launcher-managed CLI processes, with authentication, session-switch isolation, expiring control and explicit unavailable/error states. Hidden tabs retain current session data without queuing old animations; reconnect/visibility recovery reconciles robots and suppresses historical rewards.
+  Validation includes 77 Node tests, TypeScript, the production build, real forwarder/status-line subprocesses, a real macOS PTY launcher with a SIGTERM-resistant child process, unrelated-process isolation, authenticated shutdown routes and Chrome hidden/visible recovery, PL/EN and mobile controls. The installed Copilot's status-input builder confirms `session_id`; a paid interactive conversation was not started. Normal CLI sessions gain names after status-line setup but cannot be closed remotely unless started through the launcher.
+
+* Robot-named terminal tabs (2026-10-27): opt-in Copilot/Claude launcher, isolated local title bridge, response-name headers and macOS VS Code profiles in the current workspace. Normal CLI launches and hook/approval bodies are unchanged; Claude naming waits for its status line.
+  Checked: 72 Node tests, TypeScript and production build. Real forwarder/status-line subprocesses cover separate terminals, session switching, failed authentication and missing sockets; a macOS PTY checks interactive streams, exact title sequences, duplicate suppression, argument forwarding, exit status and cleanup. The VS Code menu itself has not been visually checked.
 * Shared event model and tool → station map, with tests.
 * Server: hook endpoint, session state, SSE stream, health and state API, static hosting with token injection, Host/token/Origin checks, approvals broker with timeout fallback. Every streamed activity carries the session state it leads to. Tests: state, HTTP, hooks config (27 in total).
 * Hook installer CLI (install, uninstall, status, backups, project mode, approvals flag), with tests.
@@ -593,6 +695,14 @@ The first version was written in a sandbox without access to the npm registry, s
 === In progress
 
 * Nothing half-done.
+
+.Partial rewards during long tasks (2026-10-22)
+Automatic ten-minute partial payouts now refresh Claude earnings from saved transcripts even without new hooks, while Copilot keeps its faster local checkpoint reads. Pending coins fly to thinking/working robots without interrupting their animation; only the unpaid remainder is rewarded at completion. Prompt-relative intervals are shared by server and demo, waiting states defer partial rewards, and reconnect snapshots suppress historical animation replay. The bank explains this in PL/EN; there is no extra configuration.
+Checked: 69 Node tests, TypeScript and production build. Fake-clock server and Chrome checks cover exact 10/20-minute boundaries, no-hook reads, no interrupted work, wait/resume, final remainders, new-task reset, rejected-payment retry, reconnect suppression, demo and PL/EN.
+
+.Bank payout history (2026-10-21)
+The bank card now shows all saved previous days in a scrollable PL/EN table, newest first, with separate Copilot AIC and Claude tokens. Existing private ledger records are exposed through snapshots and live bank updates without changing storage or payout accounting. Late historical checkpoints update the table even when today's total stays unchanged; midnight moves the completed recorded day into history. Missing history and older servers have explicit messages, and demo mode seeds seven fictional days.
+Checked: 67 Node tests, TypeScript and production build; Chrome demo PL/EN, a 40-day table, exact amounts, scroll and keyboard-focus retention during updates, empty/unavailable states and mobile dark layout. The restarted local server preserved today's totals and exposed the existing previous day's ledger record.
 
 .Daily payouts and local Copilot AIC
 The bank shows daily Claude-token and Copilot-AIC payouts without billing setup. Robot labels and panels show cumulative session earnings, and AIC payouts animate with their own unit. A private atomic ledger preserves daily totals and deduplicates repeated cumulative readings after restart. Local Copilot checkpoint timestamps determine daily AIC attribution; the CLI's internal schema is read defensively and missing data produces a visible error, not zero. Live SSE bank updates and the demo use the same additive protocol fields.

@@ -1,15 +1,110 @@
 import assert from 'node:assert/strict';
-import { appendFileSync, mkdirSync, mkdtempSync, writeFileSync } from 'node:fs';
+import { appendFileSync, mkdirSync, mkdtempSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { test } from 'node:test';
 import type { Activity, TokenUsage } from '../../shared/src/index.ts';
+import { PAYOUT_INTERVAL_MS, payoutPeriod } from '../../shared/src/index.ts';
 import { TranscriptFile, UsageTracker, allowedTranscript } from '../src/usage.ts';
 import { VillageState } from '../src/state.ts';
 
 const assistant = (id: string, usage: Record<string, number>, model = 'claude-opus-5-5') =>
   JSON.stringify({ type: 'assistant', message: { id, model, usage } }) + '\n';
 const U = { input_tokens: 10, output_tokens: 100, cache_creation_input_tokens: 1000, cache_read_input_tokens: 5000 };
+
+test('ten-minute payouts update working sessions without hooks and final payout is only the remainder', async t => {
+  const { root, file } = claudeHome();
+  t.after(() => rmSync(root, { recursive: true, force: true }));
+  const start = new Date(2026, 9, 22, 12).getTime();
+  let now = start;
+  const state = new VillageState({ approvals: false, approvalTimeoutSec: 60, now: () => now });
+  const earned: number[] = [];
+  const tracker = new UsageTracker({
+    claudeDir: root, delayMs: 60_000,
+    onUsage: (id, u) => state.setUsage(id, u),
+    onEarned: (id, n, total) => { state.pay(id, 'tokens', total); earned.push(n); },
+  });
+  t.after(() => tracker.stop());
+  const hook = (event: string) => {
+    const p = { hook_event_name: event, session_id: 'periodic', transcript_path: file, tool_name: 'Bash' };
+    state.handleHook(p);
+    tracker.onHook(p);
+  };
+  hook('UserPromptSubmit');
+  hook('PreToolUse');
+  writeFileSync(file, assistant('m1', U));
+  assert.equal(PAYOUT_INTERVAL_MS, 600_000);
+  assert.equal(payoutPeriod(start, start - 1), 0);
+  now = start + 599_999;
+  await tracker.poll(state.sessions.values(), now);
+  assert.deepEqual(earned, []);
+  now++;
+  await tracker.poll(state.sessions.values(), now);
+  assert.deepEqual(earned, [6110]);
+  assert.equal(state.sessions.get('periodic')?.status, 'working');
+  assert.equal(state.sessions.get('periodic')?.taskStartedAt, start);
+  assert.equal(state.bank.daily?.tokens, 6110);
+  appendFileSync(file, assistant('m2', U));
+  now = start + 1_199_999;
+  await tracker.poll(state.sessions.values(), now);
+  assert.deepEqual(earned, [6110]);
+  now++;
+  await tracker.poll(state.sessions.values(), now);
+  assert.deepEqual(earned, [6110, 6110]);
+  await tracker.poll(state.sessions.values(), now);
+  assert.deepEqual(earned, [6110, 6110]);
+  appendFileSync(file, assistant('m3', { output_tokens: 42 }));
+  hook('Stop');
+  await tracker.read('periodic');
+  assert.deepEqual(earned, [6110, 6110, 42]);
+  assert.equal(state.sessions.get('periodic')?.taskStartedAt, undefined);
+  assert.equal(state.bank.daily?.tokens, 12262);
+  now += 600_000;
+  await tracker.poll(state.sessions.values(), now);
+  assert.deepEqual(earned, [6110, 6110, 42]);
+  hook('UserPromptSubmit');
+  appendFileSync(file, assistant('m4', { output_tokens: 1 }));
+  await tracker.poll(state.sessions.values(), now);
+  assert.deepEqual(earned, [6110, 6110, 42], 'a new task gets its own interval');
+  now += 600_000;
+  await tracker.poll(state.sessions.values(), now);
+  assert.deepEqual(earned, [6110, 6110, 42, 1]);
+});
+
+test('partial payout waits for working state and retries a rejected payment without losing usage', async t => {
+  const { root, file } = claudeHome();
+  t.after(() => rmSync(root, { recursive: true, force: true }));
+  let now = 1000;
+  const state = new VillageState({ approvals: false, approvalTimeoutSec: 60, now: () => now });
+  const errors: string[] = [];
+  let reject = true;
+  const totals: number[] = [];
+  const tracker = new UsageTracker({
+    claudeDir: root,
+    onUsage: () => {},
+    onEarned: (_id, _n, total) => { if (reject) throw new Error('payout unavailable'); totals.push(total); },
+    log: message => errors.push(message),
+  });
+  t.after(() => tracker.stop());
+  const p = { hook_event_name: 'UserPromptSubmit', session_id: 'waiting', transcript_path: file };
+  state.handleHook(p);
+  tracker.onHook(p);
+  writeFileSync(file, assistant('m1', U));
+  state.handleHook({ ...p, hook_event_name: 'PermissionRequest' });
+  now += 600_000;
+  await tracker.poll(state.sessions.values(), now);
+  assert.deepEqual(totals, []);
+  assert.deepEqual(errors, []);
+  state.handleHook({ ...p, hook_event_name: 'PreToolUse', tool_name: 'Bash' });
+  await tracker.poll(state.sessions.values(), now);
+  assert.equal(errors.length, 1);
+  assert.deepEqual(totals, []);
+  reject = false;
+  await tracker.poll(state.sessions.values(), now + 5000);
+  assert.deepEqual(totals, [6110]);
+  await tracker.poll(state.sessions.values(), now + 10_000);
+  assert.deepEqual(totals, [6110]);
+});
 
 function claudeHome() {
   const root = mkdtempSync(join(tmpdir(), 'av-claude-'));

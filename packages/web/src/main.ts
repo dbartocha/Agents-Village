@@ -130,6 +130,7 @@ function use(next: Source): void {
   tags.clear();
   bankView.set({});
   source = next;
+  village.setBackground(document.hidden);
   hud.setMode(source.kind, source.kind === 'demo' ? 'demo' : 'connecting');
   source.start(sink);
   panelDirty = true;
@@ -216,11 +217,23 @@ function resize(): void {
 window.addEventListener('resize', resize);
 
 /* ---------- frame loop ---------- */
-const clock = new THREE.Clock();
+let lastFrame = performance.now();
+function resumeView(): void {
+  lastFrame = performance.now();
+  tags.clear();
+  village.setBackground(document.hidden);
+  if (!document.hidden) source.refresh?.();
+}
+document.addEventListener('visibilitychange', resumeView);
+window.addEventListener('pageshow', event => { if (event.persisted) resumeView(); });
 let uiT = 0;
 function frame(): void {
-  const dt = Math.min(clock.getDelta(), 0.05);
-  const t = clock.elapsedTime;
+  const now = performance.now();
+  if (!document.hidden && now - lastFrame > 5000) resumeView();
+  const dt = Math.min(Math.max(0, (now - lastFrame) / 1000), 0.05);
+  lastFrame = now;
+  if (document.hidden) { requestAnimationFrame(frame); return; }
+  const t = now / 1000;
   rig.update(dt);
   const busy = village.update(dt, t, rig.az);
   town.update(dt, t, busy);

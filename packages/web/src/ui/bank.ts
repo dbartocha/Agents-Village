@@ -149,7 +149,29 @@ export class BankView {
       + (daily ? `<p class="vnote">${esc(daily.day)}</p><div class="vrow"><span>Copilot</span><b class="vbig">${esc(fmtAic(daily.nanoAic))} AIC</b></div>`
         + `<div class="vrow"><span>Claude</span><b class="vbig" title="${esc(fmtNumber(daily.tokens))}">${esc(fmtCompact(daily.tokens))} ${esc(t('earnTokens'))}</b></div>`
         : `<p class="vnote">${esc(t('bankDailyMissing'))}</p>`)
-      + `<p class="hint">${esc(t('bankDailyNote'))}</p></section>`;
-    $('#bankBody').innerHTML = payouts + claude + copilot + costHtml + `<p class="hint">${esc(t(demo ? 'bankDemo' : 'bankSource'))}</p>`;
+      + `<p class="hint">${esc(t('bankDailyNote'))}</p><p class="hint">${esc(t('bankPartialNote'))}</p></section>`;
+    const history = this.bank.history;
+    const historyHtml = `<section class="payout-history"><h3 id="bankHistoryTitle">${esc(t('bankHistory'))}</h3>`
+      + (history?.length
+        ? `<div class="history-scroll" tabindex="0" role="region" aria-labelledby="bankHistoryTitle"><table>`
+          + `<thead><tr><th scope="col">${esc(t('bankHistoryDay'))}</th><th scope="col">Copilot <small>AIC</small></th>`
+          + `<th scope="col">Claude <small>${esc(t('earnTokens'))}</small></th></tr></thead><tbody>`
+          + history.map(day => `<tr><th scope="row"><time datetime="${esc(day.day)}">${esc(day.day)}</time></th>`
+            + `<td>${esc(fmtAic(day.nanoAic))}</td><td title="${esc(fmtNumber(day.tokens))}">${esc(fmtCompact(day.tokens))}</td></tr>`).join('')
+          + `</tbody></table></div><p class="hint">${esc(t('bankHistoryNote'))}</p>`
+        : `<p class="vnote">${esc(t(history ? 'bankHistoryEmpty' : 'bankHistoryMissing'))}</p>`)
+      + '</section>';
+    const body = $('#bankBody');
+    const historyScroll = body.querySelector('.history-scroll');
+    const scrollTop = historyScroll?.scrollTop ?? 0;
+    const scrollLeft = historyScroll?.scrollLeft ?? 0;
+    const historyFocused = historyScroll === document.activeElement;
+    body.innerHTML = payouts + historyHtml + claude + copilot + costHtml + `<p class="hint">${esc(t(demo ? 'bankDemo' : 'bankSource'))}</p>`;
+    const nextScroll = body.querySelector<HTMLElement>('.history-scroll');
+    if (nextScroll) {
+      if (historyFocused) nextScroll.focus({ preventScroll: true });
+      nextScroll.scrollTop = scrollTop;
+      nextScroll.scrollLeft = scrollLeft;
+    }
   }
 }

@@ -3,6 +3,7 @@
  *
  * Every hook payload carries transcript_path. After Stop, SubagentStop, PostToolUse and SessionEnd the
  * transcript is read ~1.5 s later (Claude Code writes it asynchronously), never inside the hook request.
+ * Long active tasks also read and pay new usage every ten minutes from the server poll.
  * Reads are incremental: a byte offset per file and the unfinished last line are kept for the next read.
  * Claude Code writes one line per content block, all with the same message.id and usage, so each
  * message.id is counted once (later lines of the same message only add what grew).
@@ -14,8 +15,8 @@
 import { realpath } from 'node:fs/promises';
 import { homedir } from 'node:os';
 import { join, sep } from 'node:path';
-import { totalTokens } from '../../shared/src/index.ts';
-import type { HookPayload, TokenUsage } from '../../shared/src/index.ts';
+import { payoutPeriod, totalTokens } from '../../shared/src/index.ts';
+import type { HookPayload, SessionInfo, TokenUsage } from '../../shared/src/index.ts';
 import { JsonlTail } from './jsonl-tail.ts';
 
 export function claudeConfigDir(env: NodeJS.ProcessEnv = process.env): string {
@@ -96,6 +97,8 @@ interface SessionUsage {
   timer?: ReturnType<typeof setTimeout>;
   wantEarned: boolean;
   chain: Promise<void>;
+  payoutTask?: number;
+  payoutPeriod?: number;
 }
 
 const READ_AFTER = new Set(['Stop', 'StopFailure', 'SubagentStop', 'PostToolUse', 'PostToolUseFailure', 'SessionEnd']);
@@ -137,6 +140,26 @@ export class UsageTracker {
     return rec.chain;
   }
 
+  /** Read and pay ongoing tasks at ten-minute boundaries, even if no new hook arrives. */
+  async poll(sessions: Iterable<SessionInfo>, now = Date.now()): Promise<void> {
+    const reads: Promise<void>[] = [];
+    for (const s of sessions) {
+      const rec = this.sessions.get(s.id);
+      if (!rec || s.provider !== 'claude' || s.taskStartedAt === undefined
+        || (s.status !== 'working' && s.status !== 'thinking')) continue;
+      if (rec.payoutTask !== s.taskStartedAt) {
+        rec.payoutTask = s.taskStartedAt;
+        rec.payoutPeriod = 0;
+      }
+      const period = payoutPeriod(s.taskStartedAt, now);
+      if (period <= (rec.payoutPeriod ?? 0)) continue;
+      rec.payoutPeriod = period;
+      rec.wantEarned = true;
+      reads.push(this.read(s.id));
+    }
+    await Promise.all(reads);
+  }
+
   /** Resolves when every scheduled and running read is done (tests). */
   async idle(): Promise<void> {
     for (const rec of this.sessions.values()) await rec.chain;
@@ -171,7 +194,10 @@ export class UsageTracker {
       let f = rec.files.get(real);
       if (!f) { f = new TranscriptFile(); rec.files.set(real, f); }
       try { if (await f.readNew(real)) grew = true; }
-      catch { /* the file may be gone or busy; try again on the next hook */ }
+      catch (err) {
+        this.opts.log?.(`usage ${sessionId.slice(0, 8)}: ${err instanceof Error ? err.message : String(err)}`);
+        if (wantEarned) { rec.wantEarned = true; rec.payoutPeriod = undefined; }
+      }
     }
     const total = EMPTY();
     for (const f of rec.files.values()) {
@@ -183,8 +209,11 @@ export class UsageTracker {
     if (wantEarned) {
       const sum = totalTokens(total);
       const delta = sum - rec.earnedBase;
-      rec.earnedBase = sum;
-      if (delta > 0) this.opts.onEarned(sessionId, delta, sum);
+      if (delta > 0) {
+        try { this.opts.onEarned(sessionId, delta, sum); }
+        catch (err) { rec.wantEarned = true; rec.payoutPeriod = undefined; throw err; }
+        rec.earnedBase = sum;
+      }
     }
   }
 }

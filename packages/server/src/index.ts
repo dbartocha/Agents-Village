@@ -70,6 +70,7 @@ function main(): void {
   });
   const timingTimer = setInterval(() => {
     void copilotUsage.poll();
+    void usage.poll(state.sessions.values());
     if (saving) return;
     state.checkpointTimings();
     saving = persist().finally(() => { saving = undefined; });

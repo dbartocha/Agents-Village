@@ -27,6 +27,7 @@ export interface StoredConfig {
   approvalTimeoutSec?: number;
   /** The status line the user had before `pnpm hooks:install`; scripts/statusline.ts runs it and uninstall restores it. */
   wrappedStatusLine?: { type?: string; command?: string; [k: string]: unknown };
+  wrappedCopilotStatusLine?: { type?: string; command?: string; [k: string]: unknown };
   /** GitHub account for the Copilot vault, saved by `pnpm copilot:setup`. The token never leaves this computer except to api.github.com. */
   copilot?: { username?: string; githubToken?: string; monthlyAllowance?: number };
 }

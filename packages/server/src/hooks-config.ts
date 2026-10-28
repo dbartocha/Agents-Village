@@ -97,23 +97,23 @@ export function copilotHooks(scriptPath: string): CopilotHooksFile {
  */
 export interface StatusLine { type?: string; command?: string; [k: string]: unknown }
 
-export function statusLineFor(scriptPath: string): StatusLine {
-  return { type: 'command', command: `node "${scriptPath.replace(/\\/g, '/')}"` };
+export function statusLineFor(scriptPath: string, copilot = false): StatusLine {
+  return { type: 'command', command: `node "${scriptPath.replace(/\\/g, '/')}"${copilot ? ' --copilot' : ''}`, refreshInterval: 5 };
 }
 
 /** True for the status line this tool added (recognised by the script path). */
 export function isVillageStatusLine(sl: unknown): boolean {
   if (!sl || typeof sl !== 'object') return false;
   const c = (sl as StatusLine).command;
-  return typeof c === 'string' && /\/scripts\/statusline\.ts"?\s*$/.test(c.replace(/\\/g, '/'));
+  return typeof c === 'string' && /\/scripts\/statusline\.ts"?(?: --copilot)?\s*$/.test(c.replace(/\\/g, '/'));
 }
 
 /** Sets our status line. `wrapped` is the user's previous one, to be saved before writing. */
-export function addStatusLine(settings: Settings, scriptPath: string): { settings: Settings; wrapped?: StatusLine } {
+export function addStatusLine(settings: Settings, scriptPath: string, copilot = false): { settings: Settings; wrapped?: StatusLine } {
   const next: Settings = structuredClone(settings);
   const prev = next.statusLine;
   const wrapped = prev && typeof prev === 'object' && !isVillageStatusLine(prev) ? (prev as StatusLine) : undefined;
-  next.statusLine = statusLineFor(scriptPath);
+  next.statusLine = statusLineFor(scriptPath, copilot);
   return { settings: next, wrapped };
 }
 

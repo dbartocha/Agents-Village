@@ -1,4 +1,5 @@
 import assert from 'node:assert/strict';
+import { randomUUID } from 'node:crypto';
 import { mkdtempSync, writeFileSync } from 'node:fs';
 import { request } from 'node:http';
 import type { AddressInfo } from 'node:net';
@@ -39,12 +40,36 @@ test('health answers without a token', async () => {
   assert.equal((await res.json()).name, 'agent-village');
 });
 
+test('managed shutdown enforces authentication, origin, ownership and confirmed exit', async () => {
+  const { base, state } = await start();
+  await hook(base, { hook_event_name: 'UserPromptSubmit', session_id: 'managed', prompt: 'working' });
+  const headers = { 'content-type': 'application/json', 'x-agent-village-token': TOKEN };
+  const body = { launcherId: randomUUID(), secret: 'a'.repeat(64), sessionId: 'managed', phase: 'running' };
+  const post = (path: string, value: unknown, h: Record<string, string> = headers) => fetch(base + path, { method: 'POST', headers: h, body: JSON.stringify(value) });
+  assert.equal((await post('/api/launcher', body, { ...headers, 'x-agent-village-token': 'wrong' })).status, 401);
+  assert.equal((await post('/api/launcher', body, { ...headers, origin: 'https://evil.example' })).status, 403);
+  assert.equal((await post('/api/launcher', body)).status, 200);
+  assert.equal((await post('/api/sessions/managed/home', body, { ...headers, origin: 'https://evil.example' })).status, 403);
+  assert.equal((await post('/api/sessions/managed/home', { launcherId: randomUUID() })).status, 409);
+  assert.equal((await post('/api/sessions/managed/home', body)).status, 202);
+  assert.equal(state.sessions.get('managed')!.status, 'thinking');
+  await hook(base, { hook_event_name: 'SessionEnd', session_id: 'managed' });
+  assert.equal(state.sessions.get('managed')!.status, 'thinking', 'an early exit hook must wait for supervised process confirmation');
+  assert.equal((await (await post('/api/launcher', body)).json()).stop, true);
+  const name = await fetch(`${base}/api/robot?sessionId=managed`, { headers });
+  assert.equal(decodeURIComponent(name.headers.get('x-agent-village-robot-name')!), state.sessions.get('managed')!.name);
+  assert.equal((await fetch(`${base}/api/robot?sessionId=managed`)).status, 401);
+  assert.equal((await post('/api/launcher', { ...body, phase: 'ended' })).status, 200);
+  assert.equal(state.sessions.get('managed')!.status, 'ended');
+});
+
 test('hooks need the token and update the state', async () => {
   const { base, state } = await start();
   assert.equal((await hook(base, { hook_event_name: 'SessionStart', session_id: 's1' }, 'wrong')).status, 401);
   const ok = await hook(base, { hook_event_name: 'SessionStart', session_id: 's1', cwd: '/home/me/shop' });
   assert.equal(ok.status, 200);
   assert.equal(await ok.text(), '');
+  assert.equal(decodeURIComponent(ok.headers.get('x-agent-village-robot-name')!), state.sessions.get('s1')?.name);
   assert.equal(state.sessions.get('s1')?.project, 'shop');
   assert.equal((await hook(base, { session_id: 's1' })).status, 400);
 });
@@ -140,6 +165,7 @@ test('Copilot hooks on /hooks/copilot need the token and take the event from the
   const s = state.sessions.get('copilot:abc');
   assert.equal(s?.provider, 'copilot');
   assert.equal(s?.currentTool?.station, 'forge');
+  assert.equal(decodeURIComponent(res.headers.get('x-agent-village-robot-name')!), s?.name);
 });
 
 test('Copilot waits only for a permission notification, never for the pre-check hook', async () => {
@@ -180,7 +206,10 @@ test('the status line updates the session and the bank, and unchanged values are
   });
   assert.equal((await post(line, 'nope')).status, 401);
   assert.equal(sent.length, 0);
-  assert.equal((await post(line)).status, 200);
+  const response = await post(line);
+  assert.equal(response.status, 200);
+  assert.equal(await response.text(), '');
+  assert.equal(decodeURIComponent(response.headers.get('x-agent-village-robot-name')!), state.sessions.get('st1')?.name);
   const s = state.sessions.get('st1');
   assert.equal(s?.modelName, 'Opus');
   assert.equal(s?.costUsd, 3.4);

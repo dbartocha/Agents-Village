@@ -1,4 +1,4 @@
-/** Gold coins that carry a completed turn's visual reward from the bank to its robot. */
+/** Gold coins carrying partial or completed-turn rewards from the bank to the robot. */
 import * as THREE from 'three';
 import { reduceMotion } from '../lib/util';
 import { cyl, scene, toon } from './kit';
@@ -19,6 +19,11 @@ const MAT = toon('#ffc93d');
 const pool: THREE.Mesh[] = [];
 const flying: Coin[] = [];
 const FLIGHT = 1.4;
+
+/** Discard historical visual rewards without replaying their completion effects. */
+export function clearCoins(): void {
+  for (const c of flying.splice(0)) { scene.remove(c.m); pool.push(c.m); }
+}
 
 /**
  * Sends n coins along an arc from `from` to wherever `to()` is when they land (the robot may walk).

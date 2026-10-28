@@ -34,12 +34,14 @@ export class LiveSource implements Source {
   private retry: ReturnType<typeof setTimeout> | null = null;
   private stopped = false;
   private announced = false;
+  private sink: Sink | null = null;
 
   private readonly token: string;
 
   constructor(token: string) { this.token = token; }
 
   start(sink: Sink): void {
+    this.sink = sink;
     this.stopped = false;
     sink.state('connecting');
     this.connect(sink);
@@ -50,9 +52,11 @@ export class LiveSource implements Source {
     const es = new EventSource('/events?token=' + encodeURIComponent(this.token));
     this.es = es;
     const handle = (e: MessageEvent<string>) => {
+      if (this.stopped || this.es !== es) return;
       try { sink.message(JSON.parse(e.data) as ServerMessage); } catch (err) { console.warn('[agent-village] bad message', err); }
     };
     es.addEventListener('snapshot', e => {
+      if (this.stopped || this.es !== es) return;
       sink.state('live');
       if (!this.announced) { this.announced = true; sink.system('sysLive'); }
       handle(e as MessageEvent<string>);
@@ -62,7 +66,8 @@ export class LiveSource implements Source {
     es.addEventListener('bank', e => handle(e as MessageEvent<string>));
     es.addEventListener('removed', e => handle(e as MessageEvent<string>));
     es.onerror = () => {
-      if (this.stopped) return;
+      if (this.stopped || this.es !== es) return;
+      sink.state('reconnecting');
       if (es.readyState === EventSource.CLOSED) {
         // The browser gave up (server down or token rejected). Try again from scratch.
         sink.state('offline');
@@ -79,6 +84,29 @@ export class LiveSource implements Source {
     if (this.retry) clearTimeout(this.retry);
     this.es?.close();
     this.es = null;
+    this.sink = null;
+  }
+
+  refresh(): void {
+    if (this.stopped || !this.sink) return;
+    if (this.retry) clearTimeout(this.retry);
+    this.retry = null;
+    this.es?.close();
+    this.sink.state('reconnecting');
+    this.connect(this.sink);
+  }
+
+  async goHome(sessionId: string, launcherId?: string): Promise<void> {
+    const res = await fetch(`/api/sessions/${encodeURIComponent(sessionId)}/home`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', 'X-Agent-Village-Token': this.token },
+      body: JSON.stringify({ launcherId }),
+      signal: AbortSignal.timeout(5000),
+    });
+    if (!res.ok) {
+      const body = await res.json() as { error?: string };
+      throw new Error(body.error ?? `HTTP ${res.status}`);
+    }
   }
 
   async decide(_sessionId: string, permissionId: string, decision: Decision): Promise<void> {

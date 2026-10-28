@@ -59,3 +59,14 @@ test('the status line install wraps an existing one and uninstall restores it', 
   assert.deepEqual(removeStatusLine({ statusLine: mine }, undefined).statusLine, mine);
   assert.equal(isVillageStatusLine({ type: 'command', command: 'node "C:\\x\\scripts\\statusline.ts"' }), true);
 });
+
+test('Copilot status line wraps independently, refreshes idle names, and restores custom settings', () => {
+  const mine = { type: 'command', command: 'my-copilot-line', padding: 3, refreshInterval: 10 };
+  const { settings, wrapped } = addStatusLine({ statusLine: mine, theme: 'dark' }, '/village/scripts/statusline.ts', true);
+  assert.deepEqual(wrapped, mine);
+  assert.ok(isVillageStatusLine(settings.statusLine));
+  assert.match(String((settings.statusLine as Record<string, unknown>).command), / --copilot$/);
+  assert.equal((settings.statusLine as Record<string, unknown>).refreshInterval, 5);
+  assert.equal(addStatusLine(settings, '/village/scripts/statusline.ts', true).wrapped, undefined);
+  assert.deepEqual(removeStatusLine(settings, wrapped), { statusLine: mine, theme: 'dark' });
+});

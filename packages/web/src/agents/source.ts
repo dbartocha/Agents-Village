@@ -31,6 +31,8 @@ export interface Source {
   readonly kind: 'live' | 'demo';
   start(sink: Sink): void;
   stop(): void;
+  refresh?(): void;
+  goHome?(sessionId: string, launcherId?: string): Promise<void>;
   /** Answers a permission request. Rejects with a readable message when it is too late. */
   decide(sessionId: string, permissionId: string, decision: Decision): Promise<void>;
   readonly demo?: DemoControls;

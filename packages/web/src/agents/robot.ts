@@ -117,6 +117,17 @@ export class Robot implements PoseInput {
 
   /** Puts the robot straight where its session says it is (first snapshot, no walking). */
   placeFromSession(s: SessionInfo): void {
+    this.queue = [];
+    this.beat = null;
+    this.path = [];
+    this.onArrive = null;
+    this.pendingStop = false;
+    this.spawnT = this.leaveT = this.idleT = 0;
+    this.timer = 0;
+    this.react = null;
+    this.carry = false;
+    this.leaving = false;
+    this.lastStation = undefined;
     this.session = s;
     this.task = s.prompt;
     this.scale = 1;
@@ -130,6 +141,7 @@ export class Robot implements PoseInput {
     this.face = this.faceGoal = this.slot.face;
     this.onPad = !!this.slot.pad;
     this.atFactory = false;
+    this.sleepy = s.status === 'idle';
     if (this.attn) { this.phase = this.attn; return; }
     if (s.status === 'idle') { this.phase = 'charge'; this.sleepy = true; return; }
     this.sleepy = false;
@@ -182,12 +194,8 @@ export class Robot implements PoseInput {
 
   /** Brings the robot in line with a fresh picture of its session (snapshot after a reconnect). */
   sync(s: SessionInfo): void {
-    this.session = s;
-    this.task = s.prompt ?? this.task;
-    if (s.status === 'ended') { this.leave(); return; }
-    if (s.status === 'idle') this.pendingStop = true;
-    this.syncAttention();
-    this.kick();
+    if (s.status === 'ended') { this.session = s; this.leave(); return; }
+    this.placeFromSession(s);
   }
 
   /** Adds a log line, keeping the log in time order (seeded demo lines can arrive late). */

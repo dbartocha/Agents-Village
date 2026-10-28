@@ -51,7 +51,9 @@ export class VillageState {
     this.now = options.now ?? Date.now;
     this.timings = options.timings ?? new Map();
     this.payouts = options.payouts ?? new PayoutLedger();
-    this.bank.daily = this.payouts.daily(this.now());
+    const now = this.now();
+    this.bank.daily = this.payouts.daily(now);
+    this.bank.history = this.payouts.history(now);
     this.opts = {
       approvals: options.approvals,
       approvalTimeoutSec: options.approvalTimeoutSec,
@@ -62,6 +64,13 @@ export class VillageState {
   }
 
   get approvals(): boolean { return this.opts.approvals; }
+
+  setControl(id: string, control: SessionInfo['control']): void {
+    const s = this.sessions.get(id);
+    if (!s || JSON.stringify(s.control) === JSON.stringify(control)) return;
+    s.control = control;
+    this.broadcast({ type: 'session', session: structuredClone(s) });
+  }
 
   subscribe(fn: Listener): () => void {
     this.listeners.add(fn);
@@ -266,10 +275,14 @@ export class VillageState {
   }
 
   private refreshDailyPayouts(): void {
-    const daily = this.payouts.daily(this.now());
+    const now = this.now();
+    const daily = this.payouts.daily(now);
+    const history = this.payouts.history(now);
     const prev = this.bank.daily;
-    if (prev?.day === daily.day && prev.tokens === daily.tokens && prev.nanoAic === daily.nanoAic) return;
+    if (prev?.day === daily.day && prev.tokens === daily.tokens && prev.nanoAic === daily.nanoAic
+      && JSON.stringify(this.bank.history) === JSON.stringify(history)) return;
     this.bank.daily = daily;
+    this.bank.history = history;
     this.broadcast({ type: 'bank', bank: structuredClone(this.bank) });
   }
 
@@ -381,6 +394,8 @@ export class VillageState {
 
   private emit(s: SessionInfo, kind: ActivityKind, extra: Partial<Activity>): Activity {
     const activity: Activity = { seq: ++this.seq, at: this.now(), sessionId: s.id, kind, ...extra };
+    if (s.status === 'idle' || s.status === 'ended') s.taskStartedAt = undefined;
+    else if (kind === 'prompt' || s.taskStartedAt === undefined) s.taskStartedAt = activity.at;
     if (s.timing) advanceTiming(s.timing, s.status, activity.at);
     for (const k of Object.keys(activity) as Array<keyof Activity>) if (activity[k] === undefined) delete activity[k];
     this.recent.push(activity);

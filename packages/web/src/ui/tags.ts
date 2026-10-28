@@ -93,6 +93,7 @@ export class Tags {
   clear(): void {
     for (const tag of this.tags.values()) tag.el.remove();
     this.tags.clear();
+    for (const pop of this.root.querySelectorAll('.pop')) pop.remove();
   }
 
   private create(r: Robot): Tag {

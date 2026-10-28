@@ -13,6 +13,7 @@
     "start": "node packages/server/src/index.ts --open",
     "serve": "node packages/server/src/index.ts",
     "dev": "node scripts/dev.ts",
+    "agent": "node scripts/agent.ts",
     "build": "pnpm --filter @agent-village/web build",
     "test": "node --test \"packages/**/test/*.test.ts\"",
     "typecheck": "tsc -p tsconfig.json && pnpm --filter @agent-village/web typecheck",

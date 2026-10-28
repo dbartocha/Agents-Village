@@ -11,6 +11,7 @@
  * Port and token come from ~/.agent-village/config.json. Installed by `pnpm hooks:install`.
  */
 import { DEFAULT_PORT, loadStoredConfig } from '../packages/server/src/config.ts';
+import { publishTerminalTitle } from './terminal-title.ts';
 
 async function readStdin(): Promise<string> {
   if (process.stdin.isTTY) return '';
@@ -24,12 +25,13 @@ async function main(): Promise<void> {
   const body = (await readStdin()).trim();
   const stored = loadStoredConfig();
   if (!body || !stored.token) return;
-  await fetch(`http://127.0.0.1:${stored.port ?? DEFAULT_PORT}/hooks/copilot?event=${encodeURIComponent(event)}`, {
+  const response = await fetch(`http://127.0.0.1:${stored.port ?? DEFAULT_PORT}/hooks/copilot?event=${encodeURIComponent(event)}`, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json', 'X-Agent-Village-Token': stored.token },
     body,
     signal: AbortSignal.timeout(2000),
   });
+  await publishTerminalTitle(response, 'copilot');
 }
 
 // Never hold Copilot up for long, even if stdin stays open.
