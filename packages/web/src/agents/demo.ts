@@ -10,7 +10,7 @@ import { pick, rint, rnd } from '../lib/util';
 import { tBoth } from '../ui/i18n';
 import type { DemoControls, Sink, Source } from './source';
 
-const B = (pl: string, en: string): Localized => ({ pl, en });
+const B = (pl: string, en: string, hu: string): Localized => ({ pl, en, hu });
 
 interface Step {
   tool: string;
@@ -38,65 +38,65 @@ const DUR: Record<string, number> = { Read: 4, Grep: 3.2, Glob: 3, Edit: 5.5, Wr
 const MAX_ROBOTS = 14;
 
 const TEMPLATES: Template[] = [
-  { name: 'Atlas', f: false, model: 'Opus', task: B('Przenieś logowanie na nowe sesje i usuń stare tokeny JWT.', 'Move login to the new sessions and remove the old JWT tokens.'), steps: [
-    { tool: 'Grep', target: 'getSessionToken', result: B('14 wystąpień w 6 plikach', '14 matches in 6 files') },
+  { name: 'Atlas', f: false, model: 'Opus', task: B('Przenieś logowanie na nowe sesje i usuń stare tokeny JWT.', 'Move login to the new sessions and remove the old JWT tokens.', 'Állítsd át a bejelentkezést az új munkamenetekre, és távolítsd el a régi JWT-tokeneket.'), steps: [
+    { tool: 'Grep', target: 'getSessionToken', result: B('14 wystąpień w 6 plikach', '14 matches in 6 files', '14 találat 6 fájlban') },
     { tool: 'Read', target: 'src/auth/session.ts' },
     { tool: 'Read', target: 'src/auth/middleware.ts' },
     { tool: 'Edit', target: 'src/auth/session.ts', diff: '+38 −21' },
     { tool: 'Edit', target: 'src/auth/middleware.ts', diff: '+12 −30' },
-    { tool: 'Bash', target: 'npm test -- auth', result: B('3 testy nie przechodzą', '3 tests failing') },
+    { tool: 'Bash', target: 'npm test -- auth', result: B('3 testy nie przechodzą', '3 tests failing', '3 sikertelen teszt') },
     { tool: 'Read', target: 'tests/auth/session.test.ts' },
     { tool: 'Edit', target: 'tests/auth/session.test.ts', diff: '+9 −4' },
-    { tool: 'Bash', target: 'npm test -- auth', result: B('Wszystkie 42 testy przechodzą', 'All 42 tests passing') },
-    { tool: 'Bash', target: 'git push origin feat/sessions', perm: { title: B('Chce wypchnąć zmiany na zdalne repozytorium.', 'Wants to push changes to the remote repository.'), why: B('Gałąź feat/sessions trafi na GitHuba i uruchomi CI.', 'The feat/sessions branch will go to GitHub and trigger CI.') }, result: B('Wypchnięto 3 commity', 'Pushed 3 commits') },
+    { tool: 'Bash', target: 'npm test -- auth', result: B('Wszystkie 42 testy przechodzą', 'All 42 tests passing', 'Mind a 42 teszt sikeres') },
+    { tool: 'Bash', target: 'git push origin feat/sessions', perm: { title: B('Chce wypchnąć zmiany na zdalne repozytorium.', 'Wants to push changes to the remote repository.', 'Fel szeretné küldeni a módosításokat a távoli tárolóba.'), why: B('Gałąź feat/sessions trafi na GitHuba i uruchomi CI.', 'The feat/sessions branch will go to GitHub and trigger CI.', 'A feat/sessions ág felkerül a GitHubra, és elindítja a CI-t.') }, result: B('Wypchnięto 3 commity', 'Pushed 3 commits', '3 commit feltöltve') },
   ] },
-  { name: 'Nova', f: true, agent: 'copilot', task: B('Napisz testy e2e dla rejestracji i resetu hasła.', 'Write e2e tests for sign-up and password reset.'), steps: [
+  { name: 'Nova', f: true, agent: 'copilot', task: B('Napisz testy e2e dla rejestracji i resetu hasła.', 'Write e2e tests for sign-up and password reset.', 'Írj e2e teszteket a regisztrációhoz és a jelszó-visszaállításhoz.'), steps: [
     { tool: 'Read', target: 'playwright.config.ts' },
     { tool: 'Read', target: 'src/pages/register.tsx' },
     { tool: 'Read', target: 'src/pages/reset-password.tsx' },
     { tool: 'Write', target: 'tests/e2e/register.spec.ts', diff: '+74' },
-    { tool: 'Bash', target: 'npx playwright install chromium', perm: { title: B('Chce pobrać przeglądarkę do testów.', 'Wants to download a browser for testing.'), why: B('Pobierze około 150 MB do ~/.cache/ms-playwright.', 'Downloads about 150 MB into ~/.cache/ms-playwright.') }, result: B('Zainstalowano Chromium', 'Chromium installed') },
-    { tool: 'Bash', target: 'npx playwright test register', result: B('5 z 5 testów przechodzi', '5 of 5 tests passing') },
+    { tool: 'Bash', target: 'npx playwright install chromium', perm: { title: B('Chce pobrać przeglądarkę do testów.', 'Wants to download a browser for testing.', 'Böngészőt szeretne letölteni a teszteléshez.'), why: B('Pobierze około 150 MB do ~/.cache/ms-playwright.', 'Downloads about 150 MB into ~/.cache/ms-playwright.', 'Körülbelül 150 MB-ot tölt le a ~/.cache/ms-playwright mappába.') }, result: B('Zainstalowano Chromium', 'Chromium installed', 'A Chromium telepítve') },
+    { tool: 'Bash', target: 'npx playwright test register', result: B('5 z 5 testów przechodzi', '5 of 5 tests passing', '5 tesztből 5 sikeres') },
     { tool: 'Write', target: 'tests/e2e/reset-password.spec.ts', diff: '+58' },
-    { tool: 'Bash', target: 'npx playwright test reset-password', result: B('4 z 4 testów przechodzi', '4 of 4 tests passing') },
+    { tool: 'Bash', target: 'npx playwright test reset-password', result: B('4 z 4 testów przechodzi', '4 of 4 tests passing', '4 tesztből 4 sikeres') },
   ] },
-  { name: 'Bolt', f: false, model: 'Sonnet', task: B('Dodaj numer telefonu do profilu użytkownika, razem z migracją bazy.', 'Add a phone number to the user profile, including a database migration.'), steps: [
+  { name: 'Bolt', f: false, model: 'Sonnet', task: B('Dodaj numer telefonu do profilu użytkownika, razem z migracją bazy.', 'Add a phone number to the user profile, including a database migration.', 'Adj telefonszámot a felhasználói profilhoz, adatbázis-migrációval együtt.'), steps: [
     { tool: 'Read', target: 'prisma/schema.prisma' },
     { tool: 'Edit', target: 'prisma/schema.prisma', diff: '+2' },
-    { tool: 'Bash', target: 'npx prisma migrate dev --name add_phone', perm: { title: B('Chce uruchomić migrację bazy danych.', 'Wants to run a database migration.'), why: B('Zmieni schemat Twojej lokalnej bazy: tabela users dostanie kolumnę phone.', 'Changes your local database schema: the users table gets a phone column.') }, alt: { tool: 'Bash', target: 'npx prisma migrate dev --create-only', result: B('Przygotowano plik migracji bez uruchamiania', 'Migration file prepared without applying it') }, result: B('Migracja add_phone zastosowana', 'Migration add_phone applied') },
+    { tool: 'Bash', target: 'npx prisma migrate dev --name add_phone', perm: { title: B('Chce uruchomić migrację bazy danych.', 'Wants to run a database migration.', 'Adatbázis-migrációt szeretne futtatni.'), why: B('Zmieni schemat Twojej lokalnej bazy: tabela users dostanie kolumnę phone.', 'Changes your local database schema: the users table gets a phone column.', 'Módosítja a helyi adatbázis sémáját: a users tábla egy phone oszlopot kap.') }, alt: { tool: 'Bash', target: 'npx prisma migrate dev --create-only', result: B('Przygotowano plik migracji bez uruchamiania', 'Migration file prepared without applying it', 'Migrációs fájl előkészítve, futtatás nélkül') }, result: B('Migracja add_phone zastosowana', 'Migration add_phone applied', 'Az add_phone migráció alkalmazva') },
     { tool: 'Edit', target: 'src/api/users.ts', diff: '+16 −2' },
-    { tool: 'Bash', target: 'npm run typecheck', result: B('Bez błędów', 'No errors') },
+    { tool: 'Bash', target: 'npm run typecheck', result: B('Bez błędów', 'No errors', 'Nincs hiba') },
   ] },
-  { name: 'Iris', f: true, model: 'Haiku', task: B('Uzupełnij dokumentację API dla endpointów /orders.', 'Complete the API docs for the /orders endpoints.'), steps: [
-    { tool: 'Glob', target: 'src/api/orders/**/*.ts', result: B('7 plików', '7 files') },
+  { name: 'Iris', f: true, model: 'Haiku', task: B('Uzupełnij dokumentację API dla endpointów /orders.', 'Complete the API docs for the /orders endpoints.', 'Egészítsd ki az /orders végpontok API-dokumentációját.'), steps: [
+    { tool: 'Glob', target: 'src/api/orders/**/*.ts', result: B('7 plików', '7 files', '7 fájl') },
     { tool: 'Read', target: 'src/api/orders/create.ts' },
-    { tool: 'WebSearch', target: B('OpenAPI 3.1 przykłady odpowiedzi z błędami', 'OpenAPI 3.1 error response examples') },
-    { tool: 'Ask', ask: { q: B('Czy w przykładach pokazywać kwoty w złotówkach, czy neutralne liczby?', 'Should the examples show amounts in PLN, or neutral numbers?'), options: [B('Kwoty w PLN', 'Amounts in PLN'), B('Neutralne liczby', 'Neutral numbers')] } },
+    { tool: 'WebSearch', target: B('OpenAPI 3.1 przykłady odpowiedzi z błędami', 'OpenAPI 3.1 error response examples', 'OpenAPI 3.1 hibaválasz-példák') },
+    { tool: 'Ask', ask: { q: B('Czy w przykładach pokazywać kwoty w złotówkach, czy neutralne liczby?', 'Should the examples show amounts in PLN, or neutral numbers?', 'A példák PLN-összegeket vagy pénznem nélküli számokat mutassanak?'), options: [B('Kwoty w PLN', 'Amounts in PLN', 'Összegek PLN-ben'), B('Neutralne liczby', 'Neutral numbers', 'Pénznem nélküli számok')] } },
     { tool: 'Write', target: 'docs/api/orders.md', diff: '+212' },
     { tool: 'Edit', target: 'docs/api/README.md', diff: '+3' },
   ] },
-  { name: 'Pixel', f: false, agent: 'copilot', task: B('Napraw błąd #412: koszyk gubi produkty po odświeżeniu strony.', 'Fix bug #412: the cart loses items after a page refresh.'), steps: [
+  { name: 'Pixel', f: false, agent: 'copilot', task: B('Napraw błąd #412: koszyk gubi produkty po odświeżeniu strony.', 'Fix bug #412: the cart loses items after a page refresh.', 'Javítsd a #412-es hibát: az oldal frissítése után eltűnnek a termékek a kosárból.'), steps: [
     { tool: 'Read', target: 'src/cart/store.ts' },
-    { tool: 'Grep', target: 'localStorage', result: B('2 wystąpienia', '2 matches') },
+    { tool: 'Grep', target: 'localStorage', result: B('2 wystąpienia', '2 matches', '2 találat') },
     { tool: 'Edit', target: 'src/cart/store.ts', diff: '+11 −3' },
     { tool: 'Write', target: 'tests/cart/persist.test.ts', diff: '+40' },
-    { tool: 'Bash', target: 'npx vitest run cart', result: B('8 z 8 testów przechodzi', '8 of 8 tests passing') },
+    { tool: 'Bash', target: 'npx vitest run cart', result: B('8 z 8 testów przechodzi', '8 of 8 tests passing', '8 tesztből 8 sikeres') },
   ] },
-  { name: 'Luna', f: true, model: 'Sonnet', task: B('Przygotuj stronę cennika z trzema pakietami.', 'Build a pricing page with three plans.'), steps: [
-    { tool: 'WebSearch', target: B('dostępny przełącznik miesięcznie / rocznie', 'accessible monthly / yearly toggle') },
+  { name: 'Luna', f: true, model: 'Sonnet', task: B('Przygotuj stronę cennika z trzema pakietami.', 'Build a pricing page with three plans.', 'Készíts árazási oldalt három csomaggal.'), steps: [
+    { tool: 'WebSearch', target: B('dostępny przełącznik miesięcznie / rocznie', 'accessible monthly / yearly toggle', 'akadálymentes havi / éves váltó') },
     { tool: 'Read', target: 'src/components/Card.tsx' },
-    { tool: 'Ask', ask: { q: B('Środkowy pakiet ma być wyróżniony jako polecany?', 'Should the middle plan be highlighted as recommended?'), options: [B('Tak, wyróżnij', 'Yes, highlight it'), B('Nie, wszystkie równo', 'No, keep them equal')] }, answer: B('Tak, wyróżnij', 'Yes, highlight it') },
+    { tool: 'Ask', ask: { q: B('Środkowy pakiet ma być wyróżniony jako polecany?', 'Should the middle plan be highlighted as recommended?', 'Kiemeljem a középső csomagot ajánlottként?'), options: [B('Tak, wyróżnij', 'Yes, highlight it', 'Igen, emeld ki'), B('Nie, wszystkie równo', 'No, keep them equal', 'Nem, legyenek egyformák')] }, answer: B('Tak, wyróżnij', 'Yes, highlight it', 'Igen, emeld ki') },
     { tool: 'Write', target: 'src/pages/pricing.tsx', diff: '+128' },
     { tool: 'Edit', target: 'src/styles/pricing.css', diff: '+46' },
-    { tool: 'Bash', target: 'npm run build', result: B('Build gotowy w 18 s', 'Build finished in 18 s') },
+    { tool: 'Bash', target: 'npm run build', result: B('Build gotowy w 18 s', 'Build finished in 18 s', 'A build 18 másodperc alatt elkészült') },
   ] },
 ];
 
 const SUGGESTIONS: Localized[] = [
-  B('Dodaj tryb ciemny do panelu admina.', 'Add dark mode to the admin panel.'),
-  B('Zaktualizuj zależności i sprawdź, czy build przechodzi.', 'Update dependencies and check that the build passes.'),
-  B('Zoptymalizuj ładowanie zdjęć na stronie produktu.', 'Optimize image loading on the product page.'),
-  B('Napisz skrypt, który co noc robi kopię bazy.', 'Write a script that backs up the database every night.'),
+  B('Dodaj tryb ciemny do panelu admina.', 'Add dark mode to the admin panel.', 'Adj sötét módot az adminfelülethez.'),
+  B('Zaktualizuj zależności i sprawdź, czy build przechodzi.', 'Update dependencies and check that the build passes.', 'Frissítsd a függőségeket, és ellenőrizd, hogy sikeres-e a build.'),
+  B('Zoptymalizuj ładowanie zdjęć na stronie produktu.', 'Optimize image loading on the product page.', 'Optimalizáld a képek betöltését a termékoldalon.'),
+  B('Napisz skrypt, który co noc robi kopię bazy.', 'Write a script that backs up the database every night.', 'Írj szkriptet, amely minden éjjel biztonsági mentést készít az adatbázisról.'),
 ];
 
 /** Plausible steps for a task typed by the user. */
@@ -104,40 +104,40 @@ function genericSteps(task: string): Step[] {
   const tl = task.toLowerCase();
   let area: string;
   let perm: { cmd: string; title: Localized; why: Localized; result: Localized } | undefined;
-  if (/zdję|obraz|image|photo|foto/.test(tl)) {
+  if (/zdję|obraz|image|photo|foto|kép/.test(tl)) {
     area = 'src/media';
-    perm = { cmd: 'npm install sharp', title: B('Chce dodać nową zależność do projektu.', 'Wants to add a new dependency to the project.'), why: B('Zmieni package.json i package-lock.json.', 'Changes package.json and package-lock.json.'), result: B('Dodano sharp', 'Added sharp') };
-  } else if (/zależn|pakiet|depend|aktualiz|update|upgrade/.test(tl)) {
+    perm = { cmd: 'npm install sharp', title: B('Chce dodać nową zależność do projektu.', 'Wants to add a new dependency to the project.', 'Új függőséget szeretne hozzáadni a projekthez.'), why: B('Zmieni package.json i package-lock.json.', 'Changes package.json and package-lock.json.', 'Módosítja a package.json és a package-lock.json fájlt.'), result: B('Dodano sharp', 'Added sharp', 'A sharp hozzáadva') };
+  } else if (/zależn|pakiet|depend|aktualiz|update|upgrade|függőség|frissít/.test(tl)) {
     area = '.';
-    perm = { cmd: 'npm update', title: B('Chce zaktualizować zależności.', 'Wants to update dependencies.'), why: B('Podniesie wersje pakietów w package-lock.json.', 'Bumps package versions in package-lock.json.'), result: B('Zaktualizowano 23 pakiety', 'Updated 23 packages') };
-  } else if (/baz|backup|kopi|database/.test(tl)) {
+    perm = { cmd: 'npm update', title: B('Chce zaktualizować zależności.', 'Wants to update dependencies.', 'Frissíteni szeretné a függőségeket.'), why: B('Podniesie wersje pakietów w package-lock.json.', 'Bumps package versions in package-lock.json.', 'Frissíti a csomagverziókat a package-lock.json fájlban.'), result: B('Zaktualizowano 23 pakiety', 'Updated 23 packages', '23 csomag frissítve') };
+  } else if (/baz|backup|kopi|database|adatbázis|mentés/.test(tl)) {
     area = 'scripts/db';
-    perm = { cmd: 'chmod +x scripts/db/backup.sh', title: B('Chce nadać skryptowi prawo uruchamiania.', 'Wants to make the script executable.'), why: B('Plik backup.sh będzie można odpalić bezpośrednio, np. z crona.', 'backup.sh can then run directly, e.g. from cron.'), result: B('Gotowe', 'Done') };
+    perm = { cmd: 'chmod +x scripts/db/backup.sh', title: B('Chce nadać skryptowi prawo uruchamiania.', 'Wants to make the script executable.', 'Futtathatóvá szeretné tenni a szkriptet.'), why: B('Plik backup.sh będzie można odpalić bezpośrednio, np. z crona.', 'backup.sh can then run directly, e.g. from cron.', 'A backup.sh ezután közvetlenül futtatható lesz, például cronból.'), result: B('Gotowe', 'Done', 'Kész') };
   } else {
-    area = /ciemn|dark|motyw|theme/.test(tl) ? 'src/admin/theme' : pick(['src/checkout', 'src/profile', 'src/search', 'src/notifications']);
+    area = /ciemn|dark|motyw|theme|sötét|téma/.test(tl) ? 'src/admin/theme' : pick(['src/checkout', 'src/profile', 'src/search', 'src/notifications']);
   }
   const slug = area === '.' ? 'deps' : area.split('/').pop()!;
   perm ??= {
     cmd: 'git checkout -b feat/' + slug,
-    title: B('Chce utworzyć nową gałąź.', 'Wants to create a new branch.'),
-    why: B('Niezatwierdzone zmiany przejdą razem z nim na feat/' + slug + '.', 'Uncommitted changes will move with it to feat/' + slug + '.'),
-    result: B('Utworzono gałąź feat/' + slug, 'Created branch feat/' + slug),
+    title: B('Chce utworzyć nową gałąź.', 'Wants to create a new branch.', 'Új ágat szeretne létrehozni.'),
+    why: B('Niezatwierdzone zmiany przejdą razem z nim na feat/' + slug + '.', 'Uncommitted changes will move with it to feat/' + slug + '.', 'A még nem commitolt módosítások átkerülnek az új ágra: feat/' + slug + '.'),
+    result: B('Utworzono gałąź feat/' + slug, 'Created branch feat/' + slug, 'Ág létrehozva: feat/' + slug),
   };
   const base = area === '.' ? '' : area + '/';
   const f1 = area === '.' ? 'package.json' : base + pick(['index.ts', 'config.ts', 'service.ts']);
   const f2 = area === '.' ? 'package-lock.json' : base + pick(['utils.ts', 'api.ts', 'store.ts', 'hooks.ts']);
   const nFiles = rint(3, 12), nTests = rint(12, 60);
   const steps: Step[] = [
-    { tool: 'Glob', target: area === '.' ? '**/package.json' : base + '**/*', result: B(nFiles + ' plików', nFiles + ' files') },
+    { tool: 'Glob', target: area === '.' ? '**/package.json' : base + '**/*', result: B(nFiles + ' plików', nFiles + ' files', nFiles + ' fájl') },
     { tool: 'Read', target: f1 },
     { tool: 'Read', target: f2 },
   ];
   if (Math.random() < 0.5) steps.push({ tool: 'WebSearch', target: task.replace(/\.$/, '').slice(0, 42).toLowerCase() });
-  if (Math.random() < 0.5) steps.push({ tool: 'Ask', ask: { q: B('Zrobić to w osobnej gałęzi, czy w obecnej?', 'Do this on a separate branch or the current one?'), options: [B('W osobnej gałęzi', 'Separate branch'), B('W obecnej', 'Current branch')] } });
+  if (Math.random() < 0.5) steps.push({ tool: 'Ask', ask: { q: B('Zrobić to w osobnej gałęzi, czy w obecnej?', 'Do this on a separate branch or the current one?', 'Külön ágon vagy a jelenlegin csináljam?'), options: [B('W osobnej gałęzi', 'Separate branch', 'Külön ágon'), B('W obecnej', 'Current branch', 'A jelenlegi ágon')] } });
   steps.push({ tool: 'Edit', target: area === '.' ? 'package.json' : f1, diff: '+' + rint(8, 60) + ' −' + rint(1, 20) });
   steps.push({ tool: 'Write', target: 'tests/' + slug + '.test.ts', diff: '+' + rint(20, 80) });
   steps.push({ tool: 'Bash', target: perm.cmd, perm: { title: perm.title, why: perm.why }, result: perm.result });
-  steps.push({ tool: 'Bash', target: 'npm test', result: B(nTests + ' testów przechodzi', nTests + ' tests passing') });
+  steps.push({ tool: 'Bash', target: 'npm test', result: B(nTests + ' testów przechodzi', nTests + ' tests passing', nTests + ' sikeres teszt') });
   return steps;
 }
 

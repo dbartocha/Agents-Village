@@ -4,7 +4,7 @@ import type { Robot } from '../agents/robot';
 import type { SourceState } from '../agents/source';
 import { $ } from '../lib/util';
 import type { App } from './app';
-import { L, lang, setLang, t } from './i18n';
+import { L, isLang, lang, setLang, t } from './i18n';
 import { feedText, shortTarget } from './format';
 
 /** Sets text only when it changed, so elements under the mouse stay untouched. */
@@ -23,7 +23,7 @@ export class Hud {
   constructor(app: App) {
     this.app = app;
     document.querySelectorAll<HTMLButtonElement>('.lang button').forEach(b => {
-      b.addEventListener('click', () => setLang(b.dataset.lang === 'pl' ? 'pl' : 'en'));
+      b.addEventListener('click', () => { if (isLang(b.dataset.lang)) setLang(b.dataset.lang); });
     });
     document.querySelectorAll<HTMLButtonElement>('#mode button').forEach(b => {
       b.addEventListener('click', () => app.switchTo(b.dataset.mode === 'demo' ? 'demo' : 'live'));

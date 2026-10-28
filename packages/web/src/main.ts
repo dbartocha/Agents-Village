@@ -23,6 +23,7 @@ import { BankView } from './ui/bank';
 import { NewRobotDialog } from './ui/dialog';
 import { Hud } from './ui/hud';
 import { applyStatic, fmtAic, fmtCompact, onLang } from './ui/i18n';
+import { initTheme } from './ui/theme';
 import { Panel } from './ui/panel';
 import { Tags } from './ui/tags';
 import { CameraRig, attachControls } from './world/camera';
@@ -32,6 +33,7 @@ import { createRenderer, onTheme, scene, watchTheme } from './world/kit';
 import { updateParticles } from './world/particles';
 import { buildTown } from './world/town';
 
+initTheme($<HTMLSelectElement>('#themeSelect'));
 const canvas = $<HTMLCanvasElement>('#world');
 let renderer: THREE.WebGLRenderer;
 try {
@@ -188,7 +190,7 @@ attachControls(canvas, rig, {
 });
 window.addEventListener('keydown', e => {
   const target = e.target as HTMLElement;
-  if (target.closest?.('input,textarea')) { if (e.key === 'Escape') target.blur(); return; }
+  if (target.closest?.('input,textarea,select')) { if (e.key === 'Escape') target.blur(); return; }
   if (e.key === 'Escape') { if (dialog.isOpen) dialog.close(); else { select(null); bankView.close(); } }
   if (e.key === 'q' || e.key === 'Q') rig.rotate(-1);
   if (e.key === 'e' || e.key === 'E') rig.rotate(1);

@@ -32,7 +32,8 @@ toc::[]
 | Who for | People who run several AI coding agents at once and want to see, at a glance, who is working and who is waiting for them.
 | How it gets data | Claude Code *hooks* (`type: "http"`) post events to a local server; transcripts provide tokens and a *status line* reports model, cost and plan limits. GitHub Copilot hooks run a forwarding script; local Copilot CLI usage checkpoints provide AIC without billing configuration. The optional premium-request vault uses the GitHub billing API. See <<hooks>>, <<bank>> and <<copilot>>.
 | Where it runs | Only on your computer: server on `http://localhost:{server-port}`, town in your browser.
-| Languages | Interface in English and Polish (switch in the top-left corner).
+| Languages | Interface and demo in English, Polish and Hungarian (PL / EN / HU in the top-left corner).
+| Theme | System, Light or Dark, chosen below the language switcher and remembered after reload. Changes both the interface and village lighting.
 | Status | Stage 1 (watch) with the bank, and an experimental part of stage 2 (approve from the town). See <<status>>.
 |===
 
@@ -305,7 +306,7 @@ You are working on Agent Village. Read this whole file before changing anything.
 . *Keep the server and the shared package dependency-free.* They use only Node's standard library and run as `.ts` files through Node type stripping. That means: erasable TypeScript only (no `enum`, no `namespace`, no constructor parameter properties), `import type` for types, and explicit `.ts` extensions in relative imports. The shared TypeScript config enforces erasable syntax in the web package too, so keep the same style there.
 . *Never weaken the security model* (<<security>>): loopback binding by default, Host header check, token on hooks and API, no CORS. Ask the human before changing any of it.
 . *Hooks must stay fast and harmless.* Observation hooks must answer immediately with an empty body. Only `PermissionRequest` may wait, and only when approvals are on. Any error path must let Claude Code continue normally.
-. *The UI is bilingual.* Every user-facing string goes into `packages/web/src/ui/i18n.ts` with both `pl` and `en`. Polish strings that depend on the robot's grammatical gender use `{ m, f }`.
+. *The UI supports three languages.* Every user-facing string goes into `packages/web/src/ui/i18n.ts` with `pl`, `en` and `hu`; dictionary keys are checked by TypeScript. Demo text must also provide all three translations. Polish strings that depend on the robot's grammatical gender use `{ m, f }`.
 . *The shared contract is `packages/shared/src/index.ts`.* Change server and web together when you change it, and bump `PROTOCOL_VERSION` for breaking changes.
 . *Before you finish*, run `pnpm check` (or at least `pnpm test` and `pnpm typecheck`) and fix what fails. For visual changes, run `pnpm dev`, use *Demo* mode and look at the result.
 . *Keep changes small and explain them* in the commit message: what changed and why.
@@ -627,7 +628,8 @@ NOTE: Checked against the Copilot CLI hooks reference (https://docs.github.com/e
 * *Demo bank.* Claude robots simulate tokens, models, costs and limits; Copilot robots simulate AIC, without a token breakdown. Both pay at the end of simulated turns, update daily totals and show lifetime earnings. The optional premium-request vault is also simulated. None of these numbers are persisted or mixed with live payouts.
 * *Background tabs.* The server continues collecting hooks and usage independently of the browser. SSE continues updating session data when browser scheduling allows, but hidden tabs never accumulate animation beats or payout effects. Returning to the tab, restoring it from the back/forward cache, or resuming after a frame gap longer than five seconds reconnects SSE for an authoritative snapshot. Robots immediately reconcile position, attention and idle/work state; stale movement callbacks, queued steps and coin animations are discarded. Logs and bank totals come from current state, not replayed history. Browsers can freeze hidden pages entirely; JavaScript cannot force execution then, so return-time reconciliation is required.
 * *What only the demo can do.* Answering questions, messages, *Stop* and *New robot* are simulated in the demo. *Go home* works for supervised live CLI launches as described above; ordinary live agents remain watch-only. Permissions with approvals on can still be answered from the town (see <<hooks>>).
-* *Language.* English and Polish, chosen from the browser language and remembered in `localStorage`. Demo texts are stored in both languages, so switching also changes what is already on screen.
+* *Language.* English, Polish and Hungarian, chosen from the browser language (including regional variants such as `hu-HU`) and remembered in `localStorage`. Demo texts are stored in all three languages, so switching also changes what is already on screen. Numbers and reset times use the selected language's locale. Real agent text is not translated; older bilingual payloads fall back to English when Hungarian is selected.
+* *Theme.* The selector below the language buttons offers *System*, *Light* and *Dark*. System is the default and follows browser appearance changes; explicit choices override it. `ui/theme.ts` saves the choice in `localStorage` and sets `data-theme`; the existing scene observer updates lighting, lamps and materials together with the CSS. Switching back to System removes the override.
 * *Prototype.* `prototype/agent-village-prototype.html` is the original single-file version that defined the look. Keep it as a reference; do not develop it further.
 
 [[decisions]]
@@ -643,7 +645,7 @@ NOTE: Checked against the Copilot CLI hooks reference (https://docs.github.com/e
 | Server-Sent Events instead of WebSockets | Data flows one way (server → town); the few commands go over plain `POST`. SSE reconnects by itself and needs no library.
 | three.js without a framework | The prototype is plain three.js; porting it 1:1 keeps the approved look. React Three Fiber would add weight without benefit here.
 | Colour management off, light units scaled | Keeps the exact colours of the approved r128 prototype on current three.js: ambient, hemisphere and sun light ×π; point lights (lamps, forge) use decay 1 and ×2.8. Checked by rendering the prototype with r128 and the new town with r170 side by side, by day and by night: average colours differ by less than 3%.
-| Robots, English names, bilingual UI | Requested for a more professional presentation; Polish stays available.
+| Robots, English names, multilingual UI | Requested for a more professional presentation; English, Polish and Hungarian are available.
 | Colour families per agent (warm Claude, cool Copilot) | The author wants to see at a glance which agent a robot comes from. One colour per agent would make robots of the same agent look identical, so each agent gets a family of shades.
 | Copilot through a command hook and the same `/hooks` endpoint | Copilot cannot post http hooks to localhost by default, and VS Code runs only command hooks. Translating Copilot payloads on the server into the Claude Code shape keeps one state machine and one town for every agent.
 | Copilot keeps the command hook, now posting to `/hooks/copilot?event=` | Copilot http hooks to localhost need `COPILOT_HOOK_ALLOW_LOCALHOST=1` and are not allowed at all for `preToolUse` and `permissionRequest`, so http hooks would hide every tool call. The forwarder needs no environment variable and also works in VS Code. A separate route with the event in the query keeps the Copilot path explicit.
@@ -660,6 +662,9 @@ NOTE: Checked against the Copilot CLI hooks reference (https://docs.github.com/e
 This section is the hand-over point between work sessions. Keep it current.
 
 === Done
+
+* Hungarian UI and demo, plus a persistent System / Light / Dark selector: all three languages cover panels, bank history, permissions, session shutdown, demo tasks and replies. Hungarian suggestions produce matching simulated workflows. Language switching updates existing content without reloading; explicit themes override browser appearance for both the UI and 3D village.
+  Checked: 81 Node tests, TypeScript and production build; Chrome demo checks cover Hungarian panels, suggestions, approval and shutdown text, bank history, PL/EN switching, saved preferences, live system-theme changes, explicit overrides and mobile controls.
 
 * Team handoff instructions (2026-10-28): private-repository access, fresh installation, safe updates, per-computer data, optional launcher usage and platform limits are documented above. Personal VS Code profiles and credentials are not shipped with the repository.
 

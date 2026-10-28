@@ -6,6 +6,7 @@
 *,*::before,*::after{box-sizing:border-box}
 [hidden]{display:none !important}
 :root{
+  color-scheme:light;
   --sky-top:#8fd0f2; --sky-bottom:#f1f7e8; --star:transparent;
   --panel:#ffffff; --glass:rgba(255,255,255,.93); --field:#f3f6f8;
   --ink:#1e2638; --muted:#5b6478; --line:#dbe1ea; --edge:#c9d2df; --edge-dark:#a3afc2;
@@ -62,7 +63,7 @@ body::after{
     radial-gradient(1.4px 1.4px at 14% 44%,var(--star) 50%,transparent 52%),
     radial-gradient(1.4px 1.4px at 88% 41%,var(--star) 50%,transparent 52%);
 }
-button,input,textarea{font:inherit;color:inherit}
+button,input,textarea,select{font:inherit;color:inherit}
 button{cursor:pointer}
 :focus-visible{outline:3px solid var(--accent);outline-offset:2px;border-radius:8px}
 .sr{position:absolute;width:1px;height:1px;overflow:hidden;clip:rect(0 0 0 0);white-space:nowrap}
@@ -162,7 +163,9 @@ button{cursor:pointer}
 .cam button:hover{background:var(--field);border-color:var(--line)}
 .cam svg{width:18px;height:18px}
 
-.brand-row{display:flex;align-items:center;justify-content:space-between;gap:12px}
+.brand-row{display:flex;align-items:center;justify-content:space-between;gap:12px;flex-wrap:wrap}
+.theme-control{display:flex;align-items:center;gap:8px;margin-top:8px;font-size:12px;color:var(--muted)}
+.theme-control select{min-width:0;min-height:30px;padding:2px 8px;border:2px solid var(--edge);border-radius:10px;background:var(--field);color:var(--ink);cursor:pointer}
 .lang{display:inline-flex;flex:none;padding:2px;border-radius:999px;background:var(--field);border:2px solid var(--edge)}
 .lang button{border:0;background:none;padding:3px 9px;border-radius:999px;font-family:var(--font-display);font-weight:600;font-size:12.5px;line-height:1.2;color:var(--muted);letter-spacing:.03em}
 .lang button[aria-pressed="true"]{background:var(--accent);color:var(--accent-ink)}

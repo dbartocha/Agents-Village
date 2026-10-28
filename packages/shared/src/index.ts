@@ -10,8 +10,8 @@ export const PROTOCOL_VERSION = 2;
 /** Places in the town where a robot can work. */
 export type StationId = 'lib' | 'site' | 'forge' | 'tower' | 'plaza' | 'charge';
 
-/** Text that the demo can provide in both languages. The server always sends plain strings. */
-export type Localized = { pl: string; en: string };
+/** Demo translations; optional Hungarian keeps older protocol-2 payloads compatible. */
+export type Localized = { pl: string; en: string; hu?: string };
 export type Text = string | Localized;
 
 /** Which coding agent (provider) a session comes from. Robots are coloured by it. */

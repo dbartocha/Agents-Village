@@ -3,5 +3,5 @@
   "compilerOptions": {
     "types": ["node"]
   },
-  "include": ["packages/shared/src", "packages/shared/test", "packages/server/src", "packages/server/test", "scripts"]
+  "include": ["packages/shared/src", "packages/shared/test", "packages/server/src", "packages/server/test", "packages/web/test", "scripts"]
 }

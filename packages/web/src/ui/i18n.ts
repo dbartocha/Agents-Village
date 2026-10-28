@@ -1,13 +1,13 @@
 /**
- * Every user-facing string, in Polish and English. Rule: add both languages for every key.
+ * Every user-facing string, in Polish, English and Hungarian. Add every key in all three languages.
  * Polish strings that depend on the robot's grammatical gender are written as { m, f }.
  */
 import type { Localized, Text } from '../../../shared/src/index.ts';
 
 type Entry = string | { m: string; f: string };
-export type Lang = 'pl' | 'en';
+export type Lang = 'pl' | 'en' | 'hu';
 
-const pl: Record<string, Entry> = {
+const pl = {
   goHome: 'Do domu — zakończ sesję',
   homeStopping: 'Zamykanie sesji…',
   homeConfirm: 'Zamknąć cały proces CLI robota {name}, wraz z jego rozmowami i lokalnymi zadaniami? Historia i zmiany w plikach pozostaną, ale praca może być niedokończona. Operacje zdalne i odłączone procesy mogą działać dalej.',
@@ -21,6 +21,7 @@ const pl: Record<string, Entry> = {
   brandTitle: 'Wioska Agentów',
   brandSub: 'Każdy robocik to jedna sesja agenta. Kliknij go, żeby zobaczyć, co robi i czego potrzebuje.',
   langLabel: 'Język',
+  themeLabel: 'Motyw', themeSystem: 'Systemowy', themeLight: 'Jasny', themeDark: 'Ciemny',
   statWork: 'pracuje', statWait: 'czeka na ciebie', statDone: 'się ładuje',
   modeLive: 'Na żywo', modeDemo: 'Demo', modeOffline: 'Brak serwera', modeReconnect: 'Łączenie…',
   toDemo: 'Demo', toLive: 'Na żywo',
@@ -110,9 +111,9 @@ const pl: Record<string, Entry> = {
   timeOffline: 'Brak połączenia — wartości z ostatniej aktualizacji serwera.',
   timeMissing: 'Brak danych czasowych. Uruchom aktualną wersję serwera.',
   duration: '{h} godz. {m} min {s} s',
-};
+} satisfies Record<string, Entry>;
 
-const en: Record<string, Entry> = {
+const en: Record<keyof typeof pl, Entry> = {
   goHome: 'Go home — end session',
   homeStopping: 'Closing session…',
   homeConfirm: 'Close {name}\'s entire CLI process, including its conversations and local tasks? History and file changes remain, but work may be incomplete. Remote operations and detached processes may keep running.',
@@ -126,6 +127,7 @@ const en: Record<string, Entry> = {
   brandTitle: 'Agent Village',
   brandSub: 'Each robot is one agent session. Click a robot to see what it is doing and what it needs.',
   langLabel: 'Language',
+  themeLabel: 'Theme', themeSystem: 'System', themeLight: 'Light', themeDark: 'Dark',
   statWork: 'working', statWait: 'need you', statDone: 'charging',
   modeLive: 'Live', modeDemo: 'Demo', modeOffline: 'No server', modeReconnect: 'Reconnecting…',
   toDemo: 'Demo', toLive: 'Live',
@@ -217,16 +219,125 @@ const en: Record<string, Entry> = {
   duration: '{h}h {m}m {s}s',
 };
 
-const STR: Record<Lang, Record<string, Entry>> = { pl, en };
+const hu: Record<keyof typeof pl, Entry> = {
+  goHome: 'Haza — munkamenet lezárása',
+  homeStopping: 'Munkamenet lezárása…',
+  homeConfirm: 'Bezárod {name} teljes CLI-folyamatát a beszélgetéseivel és helyi feladataival együtt? Az előzmények és a fájlmódosítások megmaradnak, de a munka befejezetlen maradhat. A távoli műveletek és a leválasztott folyamatok tovább futhatnak.',
+  homeUnavailable: 'Nincs aktív indító. Zárd be ezt a munkamenetet a terminálban. Új munkamenethez használd az Agent Village profilt vagy a pnpm agent copilot / claude parancsot.',
+  homeReady: 'Bezárja a CLI-t az előzmények és a fájlmódosítások törlése nélkül.',
+  homePending: 'Várakozás a folyamat leállásának megerősítésére.',
+  homeFailed: 'Nem sikerült lezárni a munkamenetet: {msg}',
+  canvasLabel: 'Ügynökfalu. Minden robot egy ügynök.',
+  noglTitle: 'A falu nem jeleníthető meg.',
+  noglText: 'Ez a böngésző nem támogatja a WebGL-t, vagy az ki van kapcsolva. Nyisd meg az oldalt Chrome, Edge, Firefox vagy Safari böngészőben.',
+  brandTitle: 'Ügynökfalu',
+  brandSub: 'Minden robot egy ügynök munkamenete. Kattints rá, hogy lásd, mit csinál és mire van szüksége.',
+  langLabel: 'Nyelv',
+  themeLabel: 'Megjelenés', themeSystem: 'Rendszer', themeLight: 'Világos', themeDark: 'Sötét',
+  statWork: 'dolgozik', statWait: 'rád vár', statDone: 'töltődik',
+  modeLive: 'Élő', modeDemo: 'Demó', modeOffline: 'Nincs szerver', modeReconnect: 'Újracsatlakozás…',
+  toDemo: 'Demó', toLive: 'Élő',
+  newBtn: 'Új robot',
+  legend: 'Jelmagyarázat',
+  lgSite: 'Építkezés', lgSiteD: 'Kalapál. Minden módosítással tovább épül a torony.',
+  lgLib: 'Könyvtár', lgLibD: 'Fájlokat olvas egy táblagépen, majd ládát visz az építkezésre.',
+  lgForge: 'Kovácsműhely', lgForgeD: 'Az üllőt üti, vagyis parancsokat futtat.',
+  lgTower: 'Radartorony', lgTowerD: 'Az antenna forog, miközben az interneten keres.',
+  lgPlaza: 'Szökőkút tere', lgPlazaD: 'Gondolkodik, vagy más eszközöket használ.',
+  lgCharge: 'Töltőállomás', lgChargeD: 'Befejezte a körét, és a következő utasításodra vár.',
+  lgWait: 'Engedélyre vár', lgAsk: 'Kérdése van', lgAgentsD: 'A robot színe jelzi az ügynök típusát: a meleg árnyalatok a Claude-hoz, a hidegek a Copilothoz tartoznak.',
+  lgNoteLive: 'Élő: az események a Claude Code és a Copilot hookjaiból érkeznek a helyi szerveren keresztül.',
+  lgNoteDemo: 'Demó: a robotok és a lépéseik szimuláltak.',
+  feedLabel: 'Legutóbbi események', camLabel: 'Kamera', rotL: 'Forgatás balra (Q)', rotR: 'Forgatás jobbra (E)', zoomIn: 'Nagyítás', zoomOut: 'Kicsinyítés', recenter: 'Középre igazítás',
+  closePanel: 'Panel bezárása', hTask: 'Feladat', hNow: 'Most', hLog: 'Legutóbbi lépések', hLast: 'Utolsó válasz',
+  msgLabel: 'Üzenet a robotnak', msgPh: 'Írj a robotnak…', send: 'Küldés', follow: 'Követés', unfollow: 'Követés leállítása', stop: 'Leállítás',
+  dlgTitle: 'Új robot', dlgSub: 'Írd le a feladatot. A robot kijön a gyárból, és munkához lát.', dlgName: 'Név', dlgTask: 'Feladat', cancel: 'Mégse', launch: 'Indítás',
+  dlgLiveSub: 'Élő módban minden robot egy Claude Code-munkamenet. Nyiss terminált a projekt mappájában, és futtasd:',
+  dlgLiveNote: 'A robot a munkamenet indulásakor jön ki a gyárból. Az ügynökök közvetlen indítását a faluból a 3. szakaszra tervezzük.',
+  ok: 'OK',
+  emptyTitle: 'Még nincs itt senki', emptyText: 'Indítsd el a Claude Code-ot bármelyik projektben, és itt megjelenik egy robot.', emptyDemo: 'Demó megjelenítése',
+  emptyHooks: 'Nem történik semmi? Ellenőrizd a hookokat: pnpm hooks:status',
+  offlineTitle: 'A falu szervere nem válaszol', offlineText: 'Futtasd a pnpm start parancsot a projekt mappájában. Addig a demó látható.',
+  st_lib: 'Könyvtár', st_site: 'Építkezés', st_tower: 'Radartorony', st_forge: 'Kovácsműhely', st_charge: 'Töltőállomás', st_plaza: 'Tér',
+  v_Read: 'olvassa:', v_Grep: 'fájlokban keres:', v_Glob: 'fájlokat listáz:', v_LS: 'listázza:', v_Edit: 'szerkeszti:', v_MultiEdit: 'szerkeszti:', v_Write: 'létrehozza:',
+  v_Bash: 'futtatja:', v_PowerShell: 'futtatja:', v_WebSearch: 'az interneten keres:', v_WebFetch: 'olvassa:', v_Task: 'segítőt küld:', v_Agent: 'segítőt küld:',
+  v_TodoWrite: 'lépéseket tervez', v_other: 'ezt használja: {tool}',
+  s_lib: 'Olvas', s_site: 'Épít', s_forge: 'Kovácsol', s_tower: 'Keres', s_plaza: 'Dolgozik', s_think: 'Gondolkodik',
+  sWalkHome: 'Tölteni megy', sCarry: 'Ládát visz', sWalk: 'Úton van', sWait: 'Engedélyre vár', sAsk: 'Kérdése van', sIdle: 'A következő lépésre vár',
+  sCharge: 'Töltődik · befejezte a körét', sStopped: 'Leállítva', sSpawn: 'Kijön a gyárból', sLeave: 'Visszatér a gyárba',
+  nowWalk: 'Úton ide: {st}.', nowCarry: ' A könyvtárban olvasottakat viszi.',
+  nowWait: 'Itt áll: {st}. A döntésedre vár.', nowWaitPlain: 'A döntésedre vár.', nowAsk: 'A válaszodra vár.', nowThink: 'A feladaton gondolkodik a szökőkútnál.',
+  nowIdle: 'Itt vár a következő lépésre: {st}.', nowCharge: 'Tölti az akkumulátorát. A következő utasításodra vár.', nowSpawn: 'Kijön a gyárból.', nowLeave: 'A munkamenet véget ért. Visszatér a gyárba.',
+  nowStopped: 'A töltőállomáson áll. Új feladatot adhatsz neki.',
+  reqPerm: 'Engedélyt kér', allow: 'Engedélyezés', deny: 'Elutasítás', reqAsk: 'Kérdése van', answerLabel: 'Válaszod', answerPh: 'Vagy válaszolj a saját szavaiddal', answerBtn: 'Válasz',
+  reqToolTitle: 'Ezt az eszközt szeretné használni: {tool}.', reqTerminal: 'Válaszolj a Claude Code termináljában.',
+  reqTerminalHint: 'A faluból történő válaszadáshoz kapcsold be az engedélyezést: pnpm hooks:install --approvals', reqExpires: 'A Claude Code még {s} másodpercig vár, majd a terminálban kérdez.',
+  askTerminal: 'Az ügynök kérdezett. Válaszolj a Claude Code termináljában.', idleTerminal: 'A kör véget ért. Írd be a következő utasítást a terminálba.',
+  reqDone: 'Feladat kész', reqStopped: 'Robot leállítva', newTaskLabel: 'Új feladat', newTaskPh: 'Mit csináljon ezután?', giveTask: 'Új feladat kiadása',
+  errDecision: 'Nem sikerült elküldeni a döntést: {msg}',
+  qAsk: 'kérdése van', bubWait: '{name} engedélyre vár', bubAsk: '{name} kérdezni szeretne',
+  helpers: 'segítők: {n}', steps: 'lépések: {n}', noTask: 'Még nincs feladata',
+  a_session_start: 'kijött a gyárból', a_prompt: 'feladatot kapott',
+  a_tool_failed: 'hiba: {text}', a_permission: 'engedélyt kér: {target}', a_question: 'kérdése van', a_idle: 'utasításra vár', a_info: '{text}',
+  a_res_allow: 'engedélyezve', a_res_deny: 'elutasítva', a_res_terminal: 'válasz a terminálban', a_res_timeout: 'nem érkezett válasz a faluból, a terminálban kérdez', a_res_cancelled: 'kérés visszavonva',
+  a_stop: 'befejezte a körét', a_sub_start: 'segítőt küldött: {agent}', a_sub_stop: 'a segítő végzett', a_end: 'lezárta a munkamenetet',
+  sysName: 'Falu', sysStartDemo: 'A demó 6 robottal indult.', sysLive: 'Csatlakozva a falu szerveréhez.', sysTower: 'Elkészült egy új torony. Hamarosan kezdődik a következő.',
+  sysFull: 'A falu megtelt. Állíts le egy robotot, vagy adj új feladatot egy töltődő robotnak.',
+  you: 'Te:', robot: 'Robot:', lAsk: 'Kérdezi: {q}', lWaitNote: 'engedélyre vár', lAllowed: 'engedélyezve: {target}', lDenied: 'elutasítva: {target}', lStopped: 'robot leállítva',
+  lNewTask: 'új feladat: {task}', lDone: 'A kör véget ért', lAlt: 'Alkalmazás nélkül csinálom: {target}', lSkip: 'Kihagyom ezt a lépést, és továbblépek.',
+  lGotIt: 'Értem: {answer}. Vissza a munkához.',
+  rep1: 'Rendben, ezt figyelembe veszem a következő lépéseknél.', rep2: 'Rendben, észben tartom.', rep3: 'Értem. Szólok, ha kész vagyok.',
+  popThanks: 'Köszönöm!', popOther: 'Jó, másképp', popSure: 'Persze!', popDone: 'Kész!', popHi: 'Szia!',
+  demoDone: 'Elkészült: {task}',
+  hEarned: 'Kereset', earnTokens: 'token', earnIn: 'bemenet', earnOut: 'kimenet', earnCw: 'gyorsítótár-írás', earnCr: 'gyorsítótár-olvasás',
+  earnCost: '≈ {usd} (a Claude Code becslése listaáron)', earnCtx: 'Kontextus: {pct}%', earnNone: 'Még nincs kereset. A tokenek a kör végén vagy 10 perc munka után jelennek meg.',
+  earnCopilot: 'Nincs mentett AIC-adat. Helyben rögzített használattal rendelkező Copilot CLI-munkamenetekhez érhető el.',
+  earnCopilotLocal: 'A munkamenet AIC-értéke a Copilot CLI legutóbbi helyi mentéséből. Elmaradhat a terminálban látható értéktől.',
+  earnUsageDetails: 'Beolvasott tokenhasználat (még ki nem fizetett kört is tartalmazhat):',
+  earnError: 'Nem sikerült frissíteni a keresetet: {msg}',
+  earnAicLabel: 'Kereset: {n} AIC', earnTokenLabel: 'Kereset: {n} token',
+  a_earned: '{n} tokent keresett', a_earnedAic: '{n} AIC-t keresett',
+  bankName: 'Bank', bankSub: 'Összesíti a robotok napi kifizetéseit. A fiókkorlátok külön, opcionális információk.', bankOpen: 'Bank megnyitása', closeBank: 'Bank bezárása',
+  bankToday: 'Ma', bankDaily: 'Mai kifizetések', bankDailyShort: 'Ma: {aic} AIC · {tokens} token',
+  bankDailyMissing: 'Nincsenek napi adatok. Indítsd el a szerver aktuális verzióját.',
+  bankHistory: 'Kifizetési előzmények', bankHistoryDay: 'Nap',
+  bankHistoryEmpty: 'Még nincsenek korábbi napokról mentett kifizetések.',
+  bankHistoryMissing: 'Az előzmények nem érhetők el. Indítsd el a szerver aktuális verzióját.',
+  bankHistoryNote: 'A legújabb napok elöl. Csak a helyi előzményekben mentett dátumok; a hiányzó nap nem jelent nulla használatot.',
+  bankDailyNote: 'A szerver helyi napja szerint. Csak a megfigyelt munkamenetek Claude-tokenjei és mentett Copilot AIC-értékei, átváltás nélkül. Nem a fiókod fennmaradó kerete.',
+  bankPartialNote: 'Hosszú feladatoknál 10 percenként részleges kifizetés történik, a munka megszakítása nélkül. A fennmaradó összeg a befejezéskor jár. Az összegek az ügynök mentett használati adataitól függenek.',
+  bank5h: '5 órás időablak', bank7d: 'Heti időablak', bankSpend: 'Költési korlát', bankLeft: '{pct}% maradt', bankResets: 'megújul: {when}',
+  bankClaudeNone: 'Még nincs adat. A korlátok csak Pro és Max csomagoknál láthatók, a Claude Code első válasza után, telepített állapotsorral.',
+  bankCopilotReq: '{used} / {allowance} prémium kérés, hónap: {month}', bankCopilotUsed: '{used} prémium kérés, hónap: {month}',
+  bankCopilotNone: 'Az opcionális prémiumkérés-korlát nincs csatlakoztatva (pnpm copilot:setup). A helyi AIC ettől függetlenül működik.', bankCopilotErr: 'A legutóbbi ellenőrzés sikertelen: {msg}',
+  bankCost: 'Élő munkamenetek költsége', bankCostNote: 'a Claude Code becslése listaáron',
+  bankSource: 'Kifizetések: Claude-átiratok és helyi Copilot CLI AIC-mentések, számlázási beállítás nélkül. Korlátok: Claude-állapotsor és opcionális GitHub API (10 percenként).',
+  bankDemo: 'Demó: a bank szimulált.',
+  lgBank: 'Bank', lgBankD: 'Összesíti a napi Claude-token- és Copilot-AIC-kifizetéseket. Az érmék csak animációk. Az üvegszéfek külön, opcionális fiókkorlátokat mutatnak.',
+  copilotMark: 'Copilot',
+  hTime: 'Munkamenet ideje', timeLife: 'Teljes idő', timeWork: 'Munka', timeWait: 'Rád várakozás', timeIdle: 'Tétlenség',
+  timeNote: 'Az első megfigyeléstől. Munka = gondolkodás és eszközhasználat; várakozás = engedély vagy kérdés; tétlenség = a körök között. Hookok alapján, nem CPU-használat szerint. A számlálók helyben mentődnek.',
+  timeDemo: 'Demó: a szimuláció indulása óta eltelt idő, lemezre mentés nélkül.',
+  timeGap: 'Nem megfigyelt idő: {time}. A falu leállása alatti idő nem számít munkának, várakozásnak vagy tétlenségnek.',
+  timeOffline: 'Nincs kapcsolat — a szerver legutóbbi frissítésének értékei.',
+  timeMissing: 'Nincsenek időadatok. Indítsd el a szerver aktuális verzióját.',
+  duration: '{h} ó {m} p {s} mp',
+};
+
+const STR: Record<Lang, Record<string, Entry>> = { pl, en, hu };
+const LOCALES: Record<Lang, string> = { pl: 'pl-PL', en: 'en-US', hu: 'hu-HU' };
 const KEY = 'agent-village-lang';
 const listeners: Array<() => void> = [];
+
+export function isLang(value: unknown): value is Lang { return value === 'pl' || value === 'en' || value === 'hu'; }
 
 function initialLang(): Lang {
   try {
     const saved = localStorage.getItem(KEY);
-    if (saved === 'pl' || saved === 'en') return saved;
+    if (isLang(saved)) return saved;
   } catch { /* storage can be blocked */ }
-  return (navigator.language || '').toLowerCase().startsWith('pl') ? 'pl' : 'en';
+  const browser = (navigator.language || '').toLowerCase().split('-')[0];
+  return isLang(browser) ? browser : 'en';
 }
 
 export let lang: Lang = initialLang();
@@ -239,7 +350,7 @@ export function setLang(next: Lang): void {
 }
 export function onLang(fn: () => void): void { listeners.push(fn); }
 
-/** Resolves text that may come in both languages. */
+/** Resolves translated text; older payloads without Hungarian fall back to English. */
 export function L(v: Text | undefined | null): string {
   if (v === undefined || v === null) return '';
   return typeof v === 'object' ? (v[lang] ?? v.en) : String(v);
@@ -265,9 +376,9 @@ export function t(key: string, vars?: Vars, f?: boolean): string {
   return tIn(lang, key, vars, f);
 }
 
-/** The same text in both languages, for content that must follow later language switches (demo lines). */
+/** All translations, for content that must follow later language switches (demo lines). */
 export function tBoth(key: string, vars?: Vars, f?: boolean): Localized {
-  return { pl: tIn('pl', key, vars, f), en: tIn('en', key, vars, f) };
+  return { pl: tIn('pl', key, vars, f), en: tIn('en', key, vars, f), hu: tIn('hu', key, vars, f) };
 }
 
 export function hasKey(key: string): boolean { return key in STR.en; }
@@ -287,17 +398,17 @@ export function applyStatic(root: ParentNode = document): void {
 
 /** Compact number in the UI language: 18 400 → "18 tys." (PL) or "18K" (EN). */
 export function fmtCompact(n: number): string {
-  return new Intl.NumberFormat(lang === 'pl' ? 'pl-PL' : 'en-US', { notation: 'compact', maximumFractionDigits: n < 10_000 ? 1 : 0 }).format(n);
+  return new Intl.NumberFormat(LOCALES[lang], { notation: 'compact', maximumFractionDigits: n < 10_000 ? 1 : 0 }).format(n);
 }
 
 /** Full number with grouping in the UI language. */
 export function fmtNumber(n: number): string {
-  return new Intl.NumberFormat(lang === 'pl' ? 'pl-PL' : 'en-US').format(Math.round(n));
+  return new Intl.NumberFormat(LOCALES[lang]).format(Math.round(n));
 }
 
 /** Keep native integer precision in storage; display nano-AIC as credits like the CLI. */
 export function fmtAic(nanoAic: number): string {
-  return new Intl.NumberFormat(lang === 'pl' ? 'pl-PL' : 'en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 }).format(nanoAic / 1e9);
+  return new Intl.NumberFormat(LOCALES[lang], { minimumFractionDigits: 2, maximumFractionDigits: 2 }).format(nanoAic / 1e9);
 }
 
 /** Elapsed time, with unbounded hours rather than wrapping after one day. */
@@ -308,12 +419,12 @@ export function fmtDuration(ms: number): string {
 
 /** "$3.40" in the UI language. */
 export function fmtUsd(n: number): string {
-  return new Intl.NumberFormat(lang === 'pl' ? 'pl-PL' : 'en-US', { style: 'currency', currency: 'USD' }).format(n);
+  return new Intl.NumberFormat(LOCALES[lang], { style: 'currency', currency: 'USD' }).format(n);
 }
 
 /** A reset time in local time: "14:30" today, "pon. 09:00" / "Mon 09:00" within a week, a date after that. */
 export function fmtWhen(ms: number): string {
-  const loc = lang === 'pl' ? 'pl-PL' : 'en-US';
+  const loc = LOCALES[lang];
   const d = new Date(ms), now = new Date();
   const time = new Intl.DateTimeFormat(loc, { hour: '2-digit', minute: '2-digit' }).format(d);
   if (d.toDateString() === now.toDateString()) return time;
