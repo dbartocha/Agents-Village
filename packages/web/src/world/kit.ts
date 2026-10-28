@@ -110,9 +110,9 @@ export function localToWorld(g: THREE.Object3D, x: number, y: number, z: number)
 }
 
 /* ---------- lights and theme ---------- */
-export const hemi = new THREE.HemisphereLight(0xe8f4ff, 0x7a9a5a, 0.55 * LIGHT_SCALE);
-export const ambient = new THREE.AmbientLight(0xffffff, 0.22 * LIGHT_SCALE);
-export const sun = new THREE.DirectionalLight(0xfff3dc, 0.8 * LIGHT_SCALE);
+export const hemi = new THREE.HemisphereLight(0xe8f2ff, 0x9db58c, 0.46 * LIGHT_SCALE);
+export const ambient = new THREE.AmbientLight(0xffffff, 0.16 * LIGHT_SCALE);
+export const sun = new THREE.DirectionalLight(0xfff7ec, 0.48 * LIGHT_SCALE);
 sun.position.set(-12, 24, 14);
 sun.castShadow = true;
 sun.shadow.mapSize.set(2048, 2048);
@@ -137,16 +137,19 @@ const themeHooks: Array<(night: boolean) => void> = [];
 export function onTheme(fn: (night: boolean) => void): void { themeHooks.push(fn); fn(theme.night); }
 export function applyTheme(): void {
   const night = (theme.night = isDarkTheme());
-  hemi.intensity = (night ? 0.34 : 0.55) * LIGHT_SCALE;
-  hemi.color.set(night ? 0x8fa6d9 : 0xe8f4ff);
-  hemi.groundColor.set(night ? 0x1b2838 : 0x7a9a5a);
-  sun.intensity = (night ? 0.38 : 0.8) * LIGHT_SCALE;
-  sun.color.set(night ? 0x9fb6ec : 0xfff3dc);
-  ambient.intensity = (night ? 0.14 : 0.22) * LIGHT_SCALE;
+  // Day: lit tops stay near 1.0 so colours don't clip; generous soft fill keeps shade light and pastel.
+  hemi.intensity = (night ? 0.34 : 0.46) * LIGHT_SCALE;
+  hemi.color.set(night ? 0x8fa6d9 : 0xe8f2ff);
+  hemi.groundColor.set(night ? 0x1b2838 : 0x9db58c);
+  sun.intensity = (night ? 0.38 : 0.48) * LIGHT_SCALE;
+  sun.color.set(night ? 0x9fb6ec : 0xfff7ec);
+  ambient.intensity = (night ? 0.14 : 0.16) * LIGHT_SCALE;
   winMat.emissive.set(night ? 0xffbf55 : 0x000000);
   lampMat.emissive.set(night ? 0xffd27a : 0x2a2210);
   for (const l of lampLights) l.intensity = night ? 1.1 * POINT_SCALE : 0;
   cloudMat.color.set(night ? 0x8d9bbd : 0xffffff);
+  // Lifts clouds and smoke back to white under the warmer, dimmer day light.
+  cloudMat.emissive.set(night ? 0x000000 : 0x0c0e12);
   for (const fn of themeHooks) fn(night);
 }
 export function watchTheme(): void {
