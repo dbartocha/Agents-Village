@@ -46,8 +46,8 @@ export function buildTown(): Town {
   const crowns: Array<{ c: THREE.Group; off: number }> = [];
 
   /* ---------- island ---------- */
-  mesh(cyl(ISLAND_R, ISLAND_R, 0.6, 96), '#94d36c', 0, -0.3, 0, scene, { noCast: true });
-  const lip = mesh(new THREE.TorusGeometry(ISLAND_R, 0.32, 10, 96), '#83c25c', 0, -0.3, 0, scene, { noCast: true });
+  mesh(cyl(ISLAND_R, ISLAND_R, 0.6, 96), '#98d478', 0, -0.3, 0, scene, { noCast: true });
+  const lip = mesh(new THREE.TorusGeometry(ISLAND_R, 0.32, 10, 96), '#88c768', 0, -0.3, 0, scene, { noCast: true });
   lip.rotation.x = Math.PI / 2;
   mesh(cyl(ISLAND_R + 0.05, ISLAND_R - 0.6, 1.1, 96), '#b98457', 0, -1.15, 0, scene, { noCast: true });
   const under = mesh(new THREE.ConeGeometry(ISLAND_R - 0.6, 7.5, 96, 1), '#9a6b47', 0, -5.45, 0, scene, { noCast: true });

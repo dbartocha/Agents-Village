@@ -7,7 +7,7 @@
 [hidden]{display:none !important}
 :root{
   color-scheme:light;
-  --sky-top:#8fd0f2; --sky-bottom:#f1f7e8; --star:transparent;
+  --sky-top:#8ccdf0; --sky-bottom:#eaf5f6; --star:transparent;
   --panel:#ffffff; --glass:rgba(255,255,255,.93); --field:#f3f6f8;
   --ink:#1e2638; --muted:#5b6478; --line:#dbe1ea; --edge:#c9d2df; --edge-dark:#a3afc2;
   --accent:#3a5ce0; --accent-dark:#2640a8; --accent-ink:#ffffff; --accent-soft:#e6ebfc;

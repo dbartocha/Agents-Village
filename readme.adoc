@@ -644,7 +644,7 @@ NOTE: Checked against the Copilot CLI hooks reference (https://docs.github.com/e
 | Claude Code `http` hooks instead of hook scripts | Works the same on Windows, macOS and Linux, no shell scripts to maintain, and failure is non-blocking by design.
 | Server-Sent Events instead of WebSockets | Data flows one way (server → town); the few commands go over plain `POST`. SSE reconnects by itself and needs no library.
 | three.js without a framework | The prototype is plain three.js; porting it 1:1 keeps the approved look. React Three Fiber would add weight without benefit here.
-| Colour management off, light units scaled | Keeps the exact colours of the approved r128 prototype on current three.js: ambient, hemisphere and sun light ×π; point lights (lamps, forge) use decay 1 and ×2.8. Checked by rendering the prototype with r128 and the new town with r170 side by side, by day and by night: average colours differ by less than 3%.
+| Colour management off, light units scaled | Keeps the exact colours of the approved r128 prototype on current three.js: ambient, hemisphere and sun light ×π; point lights (lamps, forge) use decay 1 and ×2.8. Checked by rendering the prototype with r128 and the new town with r170 side by side, by day and by night: average colours differ by less than 3%. Day lighting was later retuned on purpose (see <<status>>), so it no longer matches the prototype by day.
 | Robots, English names, multilingual UI | Requested for a more professional presentation; English, Polish and Hungarian are available.
 | Colour families per agent (warm Claude, cool Copilot) | The author wants to see at a glance which agent a robot comes from. One colour per agent would make robots of the same agent look identical, so each agent gets a family of shades.
 | Copilot through a command hook and the same `/hooks` endpoint | Copilot cannot post http hooks to localhost by default, and VS Code runs only command hooks. Translating Copilot payloads on the server into the Claude Code shape keeps one state machine and one town for every agent.
@@ -662,6 +662,9 @@ NOTE: Checked against the Copilot CLI hooks reference (https://docs.github.com/e
 This section is the hand-over point between work sessions. Keep it current.
 
 === Done
+
+* Daylight retune (2026-10-28): the light theme looked washed out because ambient + hemisphere fill plus the sun pushed lit toon surfaces well above 1.0. Day now keeps lit tops near 1.0 (sun 0.48, near-white) with a soft, generous fill (hemisphere 0.46 with a light sky/ground tint, ambient 0.16), giving a low-contrast pastel look that matches the night palette's softness. Grass is a light pastel green, the light-mode sky gradient is a soft blue, and clouds/smoke get a small day emissive to stay white. Night lighting is unchanged.
+  Checked: demo mode in the browser, light and dark themes.
 
 * Hungarian UI and demo, plus a persistent System / Light / Dark selector: all three languages cover panels, bank history, permissions, session shutdown, demo tasks and replies. Hungarian suggestions produce matching simulated workflows. Language switching updates existing content without reloading; explicit themes override browser appearance for both the UI and 3D village.
   Checked: 81 Node tests, TypeScript and production build; Chrome demo checks cover Hungarian panels, suggestions, approval and shutdown text, bank history, PL/EN switching, saved preferences, live system-theme changes, explicit overrides and mobile controls.
